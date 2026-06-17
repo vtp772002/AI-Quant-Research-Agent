@@ -86,10 +86,17 @@ Generate validated research ideas from prior run memory:
 
 ```bash
 python -m quant_research_agent.main --generate-ideas --config configs/base.yaml --n 10 --ideas-output-dir results/ideas
+python -m quant_research_agent.main --generate-ideas --config configs/base.yaml --llm-provider fixture --llm-fixture fixtures/ideas.json --ideas-output-dir results/ideas
 python -m quant_research_agent.main --critique-run results/runs/<run_id>/manifest.json
 python -m quant_research_agent.main --mine-alpha --config configs/base.yaml --n 5 --mine-output-dir results/alpha_mining
 python -m quant_research_agent.main --mine-alpha --config configs/base.yaml --n 3 --run-generated --mine-output-dir results/alpha_mining
 ```
+
+The LLM-facing provider boundary supports `deterministic`, `fixture`, and
+guarded external `command` providers. Command providers read prompt JSON from
+stdin and write strict JSON to stdout, and require `--allow-external-llm` or
+`AIQRA_ALLOW_EXTERNAL_LLM=1`. Prompt, response, and transcript artifacts are
+written under the idea output directory for review.
 
 Run a local production-like container:
 
@@ -193,6 +200,9 @@ The research report includes:
 - LLM-facing research agent contracts with deterministic fallback for idea
   generation, strict factor validation, run critique, memory-aware config
   generation, paper-to-alpha v2 payloads, and iterative alpha-mining orchestration.
+- Governed LLM provider boundary with prompt/schema versioning, fixture provider
+  tests, guarded external command execution, transcript artifacts, and validator
+  enforcement before generated ideas become configs.
 
 ## Validation
 
@@ -248,6 +258,8 @@ Deferred until separate stories:
 - Add auth and role-scoped access for the internal API.
 - Add a live LLM provider adapter after prompt/versioning, credentials, and
   review requirements are specified.
+- Add reviewed prompt templates and provider-specific adapters after the
+  external command boundary has stable transcripts and human review policy.
 - Promote registry export handoff into managed Postgres/object-storage deployment.
 - Add direct vendor API and securities-lending integrations after credential,
   entitlement, and provenance contracts are specified.

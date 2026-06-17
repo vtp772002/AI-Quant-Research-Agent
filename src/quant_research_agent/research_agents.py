@@ -12,6 +12,12 @@ import yaml
 from quant_research_agent.config import AppConfig, load_config
 from quant_research_agent.experiment_registry import ExperimentRunRecord, list_runs, record_to_dict
 from quant_research_agent.factors.registry import factor_names
+from quant_research_agent.llm_provider import (
+    PROMPT_SCHEMA_VERSION,
+    ProviderArtifacts,
+    build_research_prompt_payload,
+    run_structured_provider,
+)
 from quant_research_agent.operations import BatchRunResult, run_research_batch
 from quant_research_agent.run_comparison import compare_run_manifests
 
@@ -58,6 +64,7 @@ class AlphaMiningResult:
     config_paths: list[Path]
     ideas_path: Path
     batch_result: BatchRunResult | None
+    provider_artifacts: ProviderArtifacts | None
 
 
 class LLMResearchAgent:
@@ -270,6 +277,75 @@ def generate_idea_configs(
     return ideas, config_paths, ideas_path
 
 
+def generate_idea_configs_with_provider(
+    base_config_path: Path,
+    output_dir: Path,
+    objective: str,
+    count: int,
+    registry_path: Path,
+    provider: str = "deterministic",
+    fixture_path: Path | None = None,
+    command: str | None = None,
+    allow_external: bool = False,
+    prompt_version: str = PROMPT_SCHEMA_VERSION,
+) -> tuple[list[ExperimentIdea], list[Path], Path, ProviderArtifacts | None]:
+    base_config = load_config(base_config_path)
+    memory = load_research_memory(registry_path)
+    provider_artifacts = None
+    if provider == "deterministic":
+        ideas = LLMResearchAgent().generate_ideas(base_config, memory, objective, count)
+    else:
+        prompt_payload = build_research_prompt_payload(
+            objective=objective,
+            count=count,
+            factor_names=factor_names(),
+            memory=memory_to_dict(memory),
+            base_experiment={
+                "name": base_config.experiment.name,
+                "positive_factors": base_config.experiment.signal.positive_factors,
+                "negative_factors": base_config.experiment.signal.negative_factors,
+                "holding_period": base_config.experiment.backtest.holding_period,
+                "quantile": base_config.experiment.backtest.quantile,
+            },
+            prompt_version=prompt_version,
+        )
+        raw_ideas, provider_artifacts = run_structured_provider(
+            provider=provider,
+            prompt_payload=prompt_payload,
+            transcript_dir=output_dir / "llm_transcripts",
+            fixture_path=fixture_path,
+            command=command,
+            allow_external=allow_external,
+        )
+        ideas = [_idea_from_payload(item) for item in raw_ideas[:count]]
+        for idea in ideas:
+            validation = validate_experiment_idea(idea)
+            if not validation.valid:
+                raise ValueError(f"provider generated invalid idea {idea.name}: {validation.errors}")
+    configs_dir = output_dir / "configs"
+    config_paths = [
+        idea_to_config(base_config_path, idea, configs_dir / f"{idea.name}.yaml")
+        for idea in ideas
+    ]
+    ideas_path = output_dir / "ideas.json"
+    ideas_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "provider": provider,
+        "provider_artifacts": None
+        if provider_artifacts is None
+        else {
+            "prompt_path": str(provider_artifacts.prompt_path),
+            "response_path": str(provider_artifacts.response_path),
+            "transcript_path": str(provider_artifacts.transcript_path),
+            "prompt_version": provider_artifacts.prompt_version,
+            "warnings": provider_artifacts.warnings,
+        },
+        "ideas": [idea_to_dict(idea) for idea in ideas],
+    }
+    ideas_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    return ideas, config_paths, ideas_path, provider_artifacts
+
+
 def mine_alpha(
     base_config_path: Path,
     output_dir: Path,
@@ -277,13 +353,23 @@ def mine_alpha(
     count: int,
     registry_path: Path,
     run_generated: bool = False,
+    provider: str = "deterministic",
+    fixture_path: Path | None = None,
+    command: str | None = None,
+    allow_external: bool = False,
+    prompt_version: str = PROMPT_SCHEMA_VERSION,
 ) -> AlphaMiningResult:
-    ideas, config_paths, ideas_path = generate_idea_configs(
+    ideas, config_paths, ideas_path, provider_artifacts = generate_idea_configs_with_provider(
         base_config_path=base_config_path,
         output_dir=output_dir,
         objective=objective,
         count=count,
         registry_path=registry_path,
+        provider=provider,
+        fixture_path=fixture_path,
+        command=command,
+        allow_external=allow_external,
+        prompt_version=prompt_version,
     )
     batch_result = None
     if run_generated:
@@ -297,6 +383,7 @@ def mine_alpha(
         config_paths=config_paths,
         ideas_path=ideas_path,
         batch_result=batch_result,
+        provider_artifacts=provider_artifacts,
     )
 
 
@@ -366,7 +453,40 @@ def mining_result_to_dict(result: AlphaMiningResult) -> dict[str, object]:
             "failed_runs": len(result.batch_result.failures),
             "summary_path": str(result.batch_result.summary_path),
         },
+        "provider_artifacts": None
+        if result.provider_artifacts is None
+        else {
+            "provider": result.provider_artifacts.provider,
+            "prompt_version": result.provider_artifacts.prompt_version,
+            "prompt_path": str(result.provider_artifacts.prompt_path),
+            "response_path": str(result.provider_artifacts.response_path),
+            "transcript_path": str(result.provider_artifacts.transcript_path),
+            "warnings": result.provider_artifacts.warnings,
+        },
     }
+
+
+def memory_to_dict(memory: ResearchMemory) -> dict[str, object]:
+    return {
+        "run_count": memory.run_count,
+        "best_runs": memory.best_runs,
+        "weak_runs": memory.weak_runs,
+        "recurring_warnings": memory.recurring_warnings,
+    }
+
+
+def _idea_from_payload(payload: dict[str, Any]) -> ExperimentIdea:
+    return ExperimentIdea(
+        name=str(payload["name"]),
+        hypothesis=str(payload["hypothesis"]),
+        positive_factors=[str(item) for item in payload.get("positive_factors", [])],
+        negative_factors=[str(item) for item in payload.get("negative_factors", [])],
+        holding_period=int(payload["holding_period"]),
+        quantile=float(payload["quantile"]),
+        rationale=str(payload.get("rationale", "")),
+        confidence=float(payload.get("confidence", 0.5)),
+        warnings=[str(item) for item in payload.get("warnings", [])],
+    )
 
 
 def _unsupported_concepts(text: str) -> list[str]:

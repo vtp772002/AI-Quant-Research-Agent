@@ -3,14 +3,17 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 import yaml
 
 from quant_research_agent.experiment_registry import record_run
+from quant_research_agent.llm_provider import build_research_prompt_payload, run_structured_provider
 from quant_research_agent.research_agents import (
     ExperimentIdea,
     LLMResearchAgent,
     critique_run_manifest,
     generate_idea_configs,
+    generate_idea_configs_with_provider,
     load_research_memory,
     mine_alpha,
     paper_to_alpha_v2,
@@ -114,6 +117,67 @@ def test_mine_alpha_generates_configs_without_running_batch(tmp_path: Path):
     assert result.ideas_path.exists()
     assert len(result.config_paths) == 2
     assert all(path.exists() for path in result.config_paths)
+
+
+def test_fixture_provider_generates_validated_ideas_and_transcript(tmp_path: Path):
+    fixture_path = tmp_path / "fixture.json"
+    fixture_path.write_text(
+        json.dumps(
+            {
+                "ideas": [
+                    {
+                        "name": "fixture_momentum_low_risk",
+                        "hypothesis": "Fixture idea should validate through the provider boundary.",
+                        "positive_factors": ["momentum_20d"],
+                        "negative_factors": ["volatility_20d"],
+                        "holding_period": 5,
+                        "quantile": 0.2,
+                        "rationale": "Fixture provider test.",
+                        "confidence": 0.8,
+                        "warnings": ["review before running"],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    ideas, config_paths, ideas_path, artifacts = generate_idea_configs_with_provider(
+        base_config_path=_base_config(tmp_path),
+        output_dir=tmp_path / "fixture_ideas",
+        objective="Use fixture provider",
+        count=1,
+        registry_path=tmp_path / "memory.sqlite",
+        provider="fixture",
+        fixture_path=fixture_path,
+    )
+
+    assert [idea.name for idea in ideas] == ["fixture_momentum_low_risk"]
+    assert config_paths[0].exists()
+    assert ideas_path.exists()
+    assert artifacts is not None
+    assert artifacts.prompt_path.exists()
+    assert artifacts.response_path.exists()
+    assert artifacts.transcript_path.exists()
+
+
+def test_command_provider_requires_explicit_external_allowance(tmp_path: Path):
+    prompt = build_research_prompt_payload(
+        objective="guard external command",
+        count=1,
+        factor_names=["momentum_20d"],
+        memory={"run_count": 0},
+        base_experiment={"name": "base"},
+    )
+
+    with pytest.raises(PermissionError, match="requires --allow-external-llm"):
+        run_structured_provider(
+            provider="command",
+            prompt_payload=prompt,
+            transcript_dir=tmp_path / "transcripts",
+            command="python -c 'print({})'",
+            allow_external=False,
+        )
 
 
 def _base_config(tmp_path: Path) -> Path:

@@ -71,6 +71,8 @@ investment-advice API and does not place orders.
 24. Simulate as-of execution plans without routing orders or contacting brokers.
 25. Generate validated research idea configs from prior run memory, critique
     existing runs, and orchestrate iterative alpha-mining batches.
+26. Run idea generation through a governed provider boundary with deterministic,
+    fixture, or explicitly allowed command providers and transcript artifacts.
 
 ## Data Contract
 
@@ -231,6 +233,13 @@ variants, the critic explains weak or promising runs from manifest metrics, and
 alpha mining can optionally run generated configs through the existing batch
 orchestrator.
 
+The provider boundary records prompt schema version, prompt payload, provider
+response, and transcript metadata. `fixture` providers enable deterministic
+review of externally generated JSON. `command` providers are guarded by an
+explicit allow flag and environment variable because they can call external
+processes. The platform still rejects invalid provider output before any config
+is written.
+
 Execution simulation converts as-of signal target weights into a broker-free
 order plan with participation gates. It does not route orders, reserve locates,
 send broker instructions, reconcile fills, or implement a kill switch.
@@ -255,10 +264,10 @@ risk status. It does not compute forward returns or claim execution feasibility.
   adapters, plus reproducibility manifests, run comparison, a local experiment
   registry, scheduled batch orchestration, registry export handoff, vendor
   snapshot ingestion, paper-to-alpha template extraction, LLM-facing research
-  idea generation, run critique, research memory, iterative alpha mining, an
-  internal API, as-of signal snapshots, and broker-free execution simulation, but
-  these remain research approximations and do not replace broker execution data,
-  direct securities-lending feeds, direct vendor market data APIs, venue routing
-  analysis, independent alpha review, multiple-hypothesis controls, immutable
-  object storage, auth/authorization, a live LLM provider, or a full production
-  execution simulator.
+  idea generation, governed provider transcripts, run critique, research memory,
+  iterative alpha mining, an internal API, as-of signal snapshots, and
+  broker-free execution simulation, but these remain research approximations and
+  do not replace broker execution data, direct securities-lending feeds, direct
+  vendor market data APIs, venue routing analysis, independent alpha review,
+  multiple-hypothesis controls, immutable object storage, auth/authorization, a
+  managed live LLM provider, or a full production execution simulator.

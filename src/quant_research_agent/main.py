@@ -15,6 +15,7 @@ from quant_research_agent.research_agents import (
     critique_run_manifest,
     critique_to_dict,
     generate_idea_configs,
+    generate_idea_configs_with_provider,
     mining_result_to_dict,
     mine_alpha,
     paper_to_alpha_v2,
@@ -73,15 +74,25 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--mine-alpha", action="store_true", help="Generate alpha ideas, write configs, and optionally run them.")
     parser.add_argument("--mine-output-dir", default="results/alpha_mining", help="Output directory for alpha-mining artifacts.")
     parser.add_argument("--run-generated", action="store_true", help="Run generated configs during --mine-alpha.")
+    parser.add_argument("--llm-provider", default="deterministic", choices=["deterministic", "fixture", "command"], help="Research idea provider.")
+    parser.add_argument("--llm-fixture", help="JSON fixture response for --llm-provider fixture.")
+    parser.add_argument("--llm-command", help="External command for --llm-provider command. Reads prompt JSON from stdin and writes JSON to stdout.")
+    parser.add_argument("--allow-external-llm", action="store_true", help="Allow --llm-provider command to run an external process.")
+    parser.add_argument("--llm-prompt-version", default="research_idea_v1", help="Prompt/schema version recorded in provider transcripts.")
     args = parser.parse_args(argv)
 
     if args.generate_ideas:
-        ideas, config_paths, ideas_path = generate_idea_configs(
+        ideas, config_paths, ideas_path, provider_artifacts = generate_idea_configs_with_provider(
             base_config_path=Path(args.config),
             output_dir=Path(args.ideas_output_dir),
             objective=args.objective,
             count=args.n,
             registry_path=Path(args.registry_path),
+            provider=args.llm_provider,
+            fixture_path=Path(args.llm_fixture) if args.llm_fixture else None,
+            command=args.llm_command,
+            allow_external=args.allow_external_llm,
+            prompt_version=args.llm_prompt_version,
         )
         print(
             json.dumps(
@@ -89,6 +100,13 @@ def main(argv: list[str] | None = None) -> int:
                     "ideas_path": str(ideas_path),
                     "config_paths": [str(path) for path in config_paths],
                     "idea_count": len(ideas),
+                    "provider_artifacts": None
+                    if provider_artifacts is None
+                    else {
+                        "prompt_path": str(provider_artifacts.prompt_path),
+                        "response_path": str(provider_artifacts.response_path),
+                        "transcript_path": str(provider_artifacts.transcript_path),
+                    },
                 },
                 indent=2,
                 sort_keys=True,
@@ -118,6 +136,11 @@ def main(argv: list[str] | None = None) -> int:
             count=args.n,
             registry_path=Path(args.registry_path),
             run_generated=args.run_generated,
+            provider=args.llm_provider,
+            fixture_path=Path(args.llm_fixture) if args.llm_fixture else None,
+            command=args.llm_command,
+            allow_external=args.allow_external_llm,
+            prompt_version=args.llm_prompt_version,
         )
         print(json.dumps(mining_result_to_dict(result), indent=2, sort_keys=True))
         return 0
