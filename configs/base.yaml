@@ -1,0 +1,63 @@
+data:
+  source: synthetic
+  universe:
+    - AAPL
+    - MSFT
+    - NVDA
+    - AMZN
+    - META
+    - GOOGL
+    - AVGO
+    - COST
+    - TSLA
+    - NFLX
+    - AMD
+    - ADBE
+    - CSCO
+    - QCOM
+    - TXN
+    - INTU
+    - AMAT
+    - HON
+    - SBUX
+    - BKNG
+  start: "2020-01-01"
+  end: "2024-12-31"
+  seed: 42
+
+experiment:
+  name: momentum_low_volatility_demo
+  train_fraction: 0.7
+  signal:
+    positive_factors:
+      - momentum_20d
+      - momentum_60d
+    negative_factors:
+      - volatility_20d
+      - drawdown_20d
+    rank_method: percentile
+  backtest:
+    holding_period: 5
+    rebalance_days: 5
+    quantile: 0.2
+    transaction_cost_bps: 5.0
+  baselines:
+    - name: momentum_20d_only
+      positive_factors:
+        - momentum_20d
+      negative_factors: []
+    - name: low_volatility_only
+      positive_factors: []
+      negative_factors:
+        - volatility_20d
+    - name: reversal_5d_only
+      positive_factors:
+        - reversal_5d
+      negative_factors: []
+    - name: random_cross_section
+      positive_factors: []
+      negative_factors: []
+
+report:
+  output_path: reports/sample_research_report.md
+  experiments_path: results/experiments.csv
