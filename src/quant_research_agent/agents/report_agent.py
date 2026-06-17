@@ -50,6 +50,12 @@ class ReportAgent:
                 "",
                 "Signal is built from cross-sectional percentile ranks so each rebalance compares assets only against the active universe on that date.",
                 "",
+                "## Factor Diagnostics",
+                "",
+                _factor_coverage_table(result),
+                "",
+                _factor_redundancy_table(result),
+                "",
                 "## Results",
                 "",
                 _metrics_table(
@@ -75,6 +81,8 @@ class ReportAgent:
                 decision,
                 "",
                 _baseline_interpretation(result),
+                "",
+                _factor_diagnostics_interpretation(result),
                 "",
                 _walk_forward_interpretation(result),
                 "",
@@ -259,6 +267,56 @@ def _baseline_interpretation(result: ResearchRunResult) -> str:
     return (
         f"The strongest out-of-sample Sharpe is from `{best_name}`, not the agent signal. "
         "Treat this as a useful rejection/iteration signal: inspect which factor exposure is carrying the result before adding model complexity."
+    )
+
+
+def _factor_coverage_table(result: ResearchRunResult) -> str:
+    diagnostics = result.factor_diagnostics
+    if not diagnostics.coverage:
+        return "No configured factor exposures were available for diagnostics."
+
+    rows = [
+        "| Factor | Observations | Coverage | Missing Rate |",
+        "| --- | ---: | ---: | ---: |",
+    ]
+    for item in diagnostics.coverage:
+        rows.append(
+            "| {name} | {observations} | {coverage:.2%} | {missing_rate:.2%} |".format(
+                name=item.name,
+                observations=item.observations,
+                coverage=item.coverage,
+                missing_rate=item.missing_rate,
+            )
+        )
+    return "\n".join(rows)
+
+
+def _factor_redundancy_table(result: ResearchRunResult) -> str:
+    diagnostics = result.factor_diagnostics
+    if not diagnostics.redundant_pairs:
+        return f"No selected factor pairs exceeded absolute Spearman correlation of {diagnostics.correlation_threshold:.2f}."
+
+    rows = [
+        f"Pairs above absolute Spearman correlation of {diagnostics.correlation_threshold:.2f}:",
+        "",
+        "| Factor A | Factor B | Spearman Corr |",
+        "| --- | --- | ---: |",
+    ]
+    for pair in diagnostics.redundant_pairs:
+        rows.append(f"| {pair.first} | {pair.second} | {pair.correlation:.4f} |")
+    return "\n".join(rows)
+
+
+def _factor_diagnostics_interpretation(result: ResearchRunResult) -> str:
+    diagnostics = result.factor_diagnostics
+    if not diagnostics.redundant_pairs:
+        return "Factor diagnostics did not flag high pairwise redundancy among selected exposures."
+
+    strongest = diagnostics.redundant_pairs[0]
+    return (
+        "Factor diagnostics flagged potentially redundant exposures. "
+        f"The strongest pair is `{strongest.first}` and `{strongest.second}` "
+        f"with Spearman correlation {strongest.correlation:.4f}; simplify or orthogonalize before adding more factors."
     )
 
 

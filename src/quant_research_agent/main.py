@@ -35,6 +35,7 @@ def main(argv: list[str] | None = None) -> int:
                 for name, backtest in result.baselines.items()
             },
         },
+        "factor_diagnostics": _factor_diagnostics_payload(result),
     }
     if args.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
@@ -63,6 +64,31 @@ def _walk_forward_payload(backtest) -> list[dict[str, object]]:
         }
         for window in backtest.walk_forward
     ]
+
+
+def _factor_diagnostics_payload(result) -> dict[str, object]:
+    diagnostics = result.factor_diagnostics
+    return {
+        "selected_factors": diagnostics.selected_factors,
+        "correlation_threshold": diagnostics.correlation_threshold,
+        "coverage": [
+            {
+                "factor": item.name,
+                "observations": item.observations,
+                "coverage": item.coverage,
+                "missing_rate": item.missing_rate,
+            }
+            for item in diagnostics.coverage
+        ],
+        "redundant_pairs": [
+            {
+                "first": pair.first,
+                "second": pair.second,
+                "correlation": pair.correlation,
+            }
+            for pair in diagnostics.redundant_pairs
+        ],
+    }
 
 
 if __name__ == "__main__":

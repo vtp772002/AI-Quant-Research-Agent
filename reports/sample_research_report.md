@@ -23,6 +23,22 @@ Negative factors: volatility_20d, drawdown_20d
 
 Signal is built from cross-sectional percentile ranks so each rebalance compares assets only against the active universe on that date.
 
+## Factor Diagnostics
+
+| Factor | Observations | Coverage | Missing Rate |
+| --- | ---: | ---: | ---: |
+| momentum_20d | 25700 | 98.47% | 1.53% |
+| momentum_60d | 24900 | 95.40% | 4.60% |
+| volatility_20d | 25700 | 98.47% | 1.53% |
+| drawdown_20d | 25720 | 98.54% | 1.46% |
+| reversal_5d | 26000 | 99.62% | 0.38% |
+
+Pairs above absolute Spearman correlation of 0.75:
+
+| Factor A | Factor B | Spearman Corr |
+| --- | --- | ---: |
+| momentum_20d | drawdown_20d | 0.7881 |
+
 ## Results
 
 | Split | IC Mean | Sharpe | Max Drawdown | Avg Turnover | Total Return |
@@ -62,6 +78,8 @@ Signal is built from cross-sectional percentile ranks so each rebalance compares
 The signal is a candidate for deeper research: out-of-sample IC and Sharpe are positive. The next question is whether the effect survives real data, costs, and neutralization.
 
 The strongest out-of-sample Sharpe is from `momentum_20d_only`, not the agent signal. Treat this as a useful rejection/iteration signal: inspect which factor exposure is carrying the result before adding model complexity.
+
+Factor diagnostics flagged potentially redundant exposures. The strongest pair is `momentum_20d` and `drawdown_20d` with Spearman correlation 0.7881; simplify or orthogonalize before adding more factors.
 
 Walk-forward validation supports further research: most agent-signal windows have positive IC and the average window Sharpe is positive.
 

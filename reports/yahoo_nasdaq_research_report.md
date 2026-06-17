@@ -23,6 +23,18 @@ Negative factors: volatility_20d, drawdown_20d
 
 Signal is built from cross-sectional percentile ranks so each rebalance compares assets only against the active universe on that date.
 
+## Factor Diagnostics
+
+| Factor | Observations | Coverage | Missing Rate |
+| --- | ---: | ---: | ---: |
+| momentum_20d | 29740 | 98.67% | 1.33% |
+| momentum_60d | 28940 | 96.02% | 3.98% |
+| volatility_20d | 29740 | 98.67% | 1.33% |
+| drawdown_20d | 29760 | 98.74% | 1.26% |
+| reversal_5d | 30040 | 99.67% | 0.33% |
+
+No selected factor pairs exceeded absolute Spearman correlation of 0.75.
+
 ## Results
 
 | Split | IC Mean | Sharpe | Max Drawdown | Avg Turnover | Total Return |
@@ -62,6 +74,8 @@ Signal is built from cross-sectional percentile ranks so each rebalance compares
 The signal is not supported out-of-sample in this run. Treat it as rejected until a more robust variant improves IC stability without increasing overfit risk.
 
 The strongest out-of-sample Sharpe is from `reversal_5d_only`, not the agent signal. Treat this as a useful rejection/iteration signal: inspect which factor exposure is carrying the result before adding model complexity.
+
+Factor diagnostics did not flag high pairwise redundancy among selected exposures.
 
 Walk-forward validation is not yet stable enough for promotion: inspect the weak windows before adding factor complexity.
 

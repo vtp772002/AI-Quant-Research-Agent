@@ -10,6 +10,11 @@ from quant_research_agent.agents.hypothesis_agent import Hypothesis, HypothesisA
 from quant_research_agent.backtest.engine import BacktestResult, run_long_short_backtest
 from quant_research_agent.config import AppConfig
 from quant_research_agent.data.loader import MarketDataRequest, load_market_data
+from quant_research_agent.factors.diagnostics import (
+    FactorDiagnostics,
+    compute_factor_diagnostics,
+    selected_factor_names,
+)
 from quant_research_agent.factors.registry import compute_factor_library
 
 
@@ -21,6 +26,7 @@ class ResearchRunResult:
     signal: pd.Series
     backtest: BacktestResult
     baselines: dict[str, BacktestResult]
+    factor_diagnostics: FactorDiagnostics
 
 
 def run_research_workflow(config: AppConfig) -> ResearchRunResult:
@@ -53,6 +59,10 @@ def run_research_workflow(config: AppConfig) -> ResearchRunResult:
         config=config,
         reference_index=signal.index,
     )
+    factor_diagnostics = compute_factor_diagnostics(
+        factors=factors,
+        selected_factors=selected_factor_names(config),
+    )
     return ResearchRunResult(
         hypothesis=hypothesis,
         market_data=market_data,
@@ -60,4 +70,5 @@ def run_research_workflow(config: AppConfig) -> ResearchRunResult:
         signal=signal,
         backtest=backtest,
         baselines=baselines,
+        factor_diagnostics=factor_diagnostics,
     )

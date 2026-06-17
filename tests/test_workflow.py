@@ -43,6 +43,11 @@ def test_research_workflow_produces_metrics_and_report(tmp_path: Path):
                         "negative_factors": [],
                     },
                     {
+                        "name": "reversal_20d_only",
+                        "positive_factors": ["reversal_20d"],
+                        "negative_factors": [],
+                    },
+                    {
                         "name": "random_cross_section",
                         "positive_factors": [],
                         "negative_factors": [],
@@ -64,12 +69,18 @@ def test_research_workflow_produces_metrics_and_report(tmp_path: Path):
     assert "sharpe" in result.backtest.metrics["full"]
     assert len(result.backtest.walk_forward) == 3
     assert result.backtest.walk_forward[0].metrics["observations"] > 0
-    assert set(result.baselines) == {"momentum_20d_only", "random_cross_section"}
+    assert result.factor_diagnostics.selected_factors == ["momentum_20d", "volatility_20d", "reversal_20d"]
+    assert result.factor_diagnostics.redundant_pairs
+    assert result.factor_diagnostics.redundant_pairs[0].first == "momentum_20d"
+    assert result.factor_diagnostics.redundant_pairs[0].second == "reversal_20d"
+    assert set(result.baselines) == {"momentum_20d_only", "reversal_20d_only", "random_cross_section"}
     assert result.baselines["momentum_20d_only"].metrics["test"]["observations"] > 0
     assert len(result.baselines["momentum_20d_only"].walk_forward) == 3
     assert report_path.exists()
     report_text = report_path.read_text()
     assert "AI Quant Research Report" in report_text
+    assert "Factor Diagnostics" in report_text
+    assert "momentum_20d | reversal_20d" in report_text
     assert "Baseline Comparison" in report_text
     assert "Walk-Forward Validation" in report_text
     assert "wf_01" in report_text
@@ -79,7 +90,8 @@ def test_research_workflow_produces_metrics_and_report(tmp_path: Path):
     assert set(experiment_rows["strategy"]) == {
         "agent_signal",
         "momentum_20d_only",
+        "reversal_20d_only",
         "random_cross_section",
     }
     assert {"full_sample", "wf_01", "wf_02", "wf_03"}.issubset(set(experiment_rows["window"]))
-    assert len(experiment_rows) == 12
+    assert len(experiment_rows) == 16

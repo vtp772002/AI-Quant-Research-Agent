@@ -27,11 +27,12 @@ python -m src.main --config configs/base.yaml
 2. Propose or load an alpha hypothesis.
 3. Compute a reusable factor library.
 4. Convert selected factors into a cross-sectional signal.
-5. Run a long-short backtest with chronological train/test split.
-6. Compare the agent signal against configured baseline strategies.
-7. Validate signal stability over configured walk-forward windows.
-8. Calculate IC, Sharpe ratio, max drawdown, turnover, and total return.
-9. Write a Markdown research report and append experiment metrics.
+5. Diagnose selected factor coverage and pairwise redundancy.
+6. Run a long-short backtest with chronological train/test split.
+7. Compare the agent signal against configured baseline strategies.
+8. Validate signal stability over configured walk-forward windows.
+9. Calculate IC, Sharpe ratio, max drawdown, turnover, and total return.
+10. Write a Markdown research report and append experiment metrics.
 
 ## Data Contract
 
@@ -66,6 +67,11 @@ When configured, walk-forward validation divides the backtest results into
 multiple chronological test windows after an initial expanding training period.
 The report summarizes agent-signal stability by window and compares aggregate
 walk-forward stability across configured strategies.
+
+Factor diagnostics evaluate the selected agent and baseline factor exposures
+before interpreting results. The report shows factor coverage, missing rates,
+and high absolute Spearman-correlation pairs so redundant exposures can be
+simplified before adding more signal complexity.
 
 ## Limitations
 

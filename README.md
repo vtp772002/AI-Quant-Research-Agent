@@ -87,6 +87,7 @@ The research report includes:
 - Chronological train/test split.
 - Baseline comparison on test-period metrics.
 - Walk-forward validation across multiple chronological windows.
+- Factor coverage and redundancy diagnostics for selected exposures.
 
 ## Validation
 
@@ -104,6 +105,6 @@ python -m quant_research_agent.main --config configs/base.yaml --json
 
 ## Next Steps
 
-- Add factor correlation and redundancy analysis.
+- Add neutralization and liquidity stress tests for promising factors.
 - Add paper-to-alpha extraction that turns quant papers/blogs into experiment
   templates.
