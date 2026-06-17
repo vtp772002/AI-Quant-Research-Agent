@@ -4,6 +4,13 @@ import argparse
 import json
 from pathlib import Path
 
+from quant_research_agent.execution_simulator import (
+    execution_simulation_to_dict,
+    run_execution_simulation,
+)
+from quant_research_agent.operations import batch_result_to_dict, run_research_batch
+from quant_research_agent.paper_alpha import template_to_config, write_alpha_template
+from quant_research_agent.registry_export import export_registry_snapshot, registry_export_to_dict
 from quant_research_agent.run_comparison import (
     compare_run_manifests,
     comparison_to_dict,
@@ -35,7 +42,58 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--limit", type=int, help="Maximum number of compared runs to return.")
     parser.add_argument("--output", help="Optional path for comparison output.")
+    parser.add_argument("--run-batch", nargs="+", help="Run one or more configs and publish batch summary/comparison artifacts.")
+    parser.add_argument("--batch-output-dir", default="results/batch", help="Directory for batch summary and comparison artifacts.")
+    parser.add_argument(
+        "--export-registry",
+        help="Export a SQLite registry snapshot to an object-store style directory.",
+    )
+    parser.add_argument("--registry-path", default="results/experiments.sqlite", help="SQLite registry path for registry export.")
+    parser.add_argument("--postgres-table", default="experiment_runs", help="Postgres table name for generated registry SQL.")
+    parser.add_argument("--paper-to-alpha", help="Extract a draft alpha experiment template from a paper/blog text file.")
+    parser.add_argument("--template-output", help="Output YAML path for --paper-to-alpha.")
+    parser.add_argument("--simulate-execution", action="store_true", help="Simulate an as-of execution plan without placing trades.")
+    parser.add_argument("--as-of-date", help="As-of date for signal generation or execution simulation.")
+    parser.add_argument("--execution-output", help="Optional JSON output path for execution simulation.")
+    parser.add_argument("--max-participation", type=float, help="Override simulated max trade participation.")
     args = parser.parse_args(argv)
+
+    if args.run_batch:
+        result = run_research_batch(
+            config_paths=[Path(path) for path in args.run_batch],
+            output_dir=Path(args.batch_output_dir),
+            comparison_metric=args.comparison_metric,
+            limit=args.limit,
+        )
+        print(json.dumps(batch_result_to_dict(result), indent=2, sort_keys=True))
+        return 0 if result.status == "completed" else 1
+
+    if args.export_registry:
+        export = export_registry_snapshot(
+            registry_path=Path(args.registry_path),
+            output_dir=Path(args.export_registry),
+            postgres_table=args.postgres_table,
+        )
+        print(json.dumps(registry_export_to_dict(export), indent=2, sort_keys=True))
+        return 0
+
+    if args.paper_to_alpha:
+        output_path = Path(args.template_output or "results/paper_alpha_template.yaml")
+        template = write_alpha_template(Path(args.paper_to_alpha), output_path)
+        payload = template_to_config(template)
+        payload["output_path"] = str(output_path)
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0
+
+    if args.simulate_execution:
+        simulation = run_execution_simulation(
+            config_path=Path(args.config),
+            as_of_date=args.as_of_date,
+            output_path=Path(args.execution_output) if args.execution_output else None,
+            max_participation=args.max_participation,
+        )
+        print(json.dumps(execution_simulation_to_dict(simulation), indent=2, sort_keys=True))
+        return 0
 
     if args.compare_runs:
         comparison = compare_run_manifests(

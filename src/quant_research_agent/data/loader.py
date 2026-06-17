@@ -31,9 +31,9 @@ def load_market_data(request: MarketDataRequest) -> pd.DataFrame:
         )
     if source == "yahoo":
         return load_yahoo_ohlcv(request.universe, request.start, request.end)
-    if source == "csv_snapshot":
+    if source in {"csv_snapshot", "vendor_snapshot"}:
         if request.snapshot_path is None:
-            raise ValueError("snapshot_path is required for data.source=csv_snapshot")
+            raise ValueError(f"snapshot_path is required for data.source={request.source}")
         return load_csv_snapshot_ohlcv(request.snapshot_path, request.universe, request.start, request.end)
     raise ValueError(f"unsupported data source: {request.source}")
 

@@ -39,6 +39,12 @@ quant_research_agent.experiment_registry
 quant_research_agent.signals
   as-of signal generation boundary
 
+quant_research_agent.operations / registry_export
+  batch run orchestration and offline registry handoff
+
+quant_research_agent.paper_alpha / execution_simulator
+  research-template extraction and broker-free execution feasibility modeling
+
 quant_research_agent.main / api
   app surfaces
 ```

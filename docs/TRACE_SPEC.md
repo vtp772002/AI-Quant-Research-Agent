@@ -7,6 +7,12 @@ review, benchmark scoring, failure attribution, and future harness evolution.
 The current schema lives in `scripts/schema/001-init.sql` under the `trace`
 table. The schema is not changed by Phase 2.
 
+Current CLI limitation: the checked-in `scripts/bin/harness-cli` binary only
+accepts `trace --summary <text> --outcome <completed|blocked|partial|failed>`.
+The richer fields below document the durable schema and desired CLI contract,
+but agents using this binary must record a minimal trace and, when needed, use
+story evidence or backlog items for detailed proof until the CLI is upgraded.
+
 ## Field Reference
 
 | Field | Type | Required | Format | Example |
@@ -14,7 +20,7 @@ table. The schema is not changed by Phase 2.
 | `id` | INTEGER | Automatic | SQLite autoincrement primary key. Do not set manually. | `42` |
 | `created_at` | TEXT | Automatic | SQLite `datetime('now')`. Do not set manually. | `2026-05-27 09:24:37` |
 | `task_summary` | TEXT | Yes | One sentence, at least 10 characters, naming the outcome or attempted outcome. | `Completed Phase 2 docs-only observability and taxonomy specification` |
-| `intake_id` | INTEGER | Standard+ when an intake was recorded | Integer id from the related `intake` row. | `36` |
+| `intake_id` | INTEGER | Standard+ when supported by the CLI and an intake was recorded | Integer id from the related `intake` row. | `36` |
 | `story_id` | TEXT | Standard+ when work maps to one story | Story id from the `story` table. Use the main story when one trace covers several; list the rest in `notes`. | `US-004` |
 | `agent` | TEXT | Optional for minimal; Standard+ expected | Short agent/tool name. | `codex` |
 | `actions_taken` | TEXT | Standard+ | JSON array text. With the current CLI, pass a comma-separated list and the CLI stores JSON text. | `["read PHASE2.md","drafted TRACE_SPEC.md","updated HARNESS.md"]` |

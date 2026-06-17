@@ -63,6 +63,12 @@ investment-advice API and does not place orders.
     available on or before that date.
 19. Compare reproducibility manifests across prior runs and rank them by a
     selected test-period metric.
+20. Run scheduled-style research batches over one or more configs and publish
+    batch summaries plus comparison artifacts.
+21. Export the local registry as offline object-store/Postgres handoff artifacts.
+22. Load vendor snapshot drops through the validated OHLCV snapshot boundary.
+23. Extract draft alpha experiment templates from paper or blog text.
+24. Simulate as-of execution plans without routing orders or contacting brokers.
 
 ## Data Contract
 
@@ -194,6 +200,29 @@ test-period metric, emits Markdown or JSON, and warns when compared runs are not
 strictly like-for-like because they use different config hashes, git commits,
 data sources, snapshot dataset ids, or dirty worktrees.
 
+Batch orchestration runs one or more config files through the same CLI workflow,
+records successful run ids, captures per-config failures, and writes comparison
+artifacts for the generated run bundle directory. It is suitable for cron,
+GitHub Actions, or a future worker, but it is not a queue or distributed
+scheduler.
+
+Registry export writes newline-delimited JSON records, an export manifest, and
+a reviewable Postgres upsert handoff SQL file from the local SQLite registry.
+This is an offline migration and object-store handoff surface, not a managed
+database service, migration tool, or retention policy.
+
+Vendor snapshot ingestion treats commercial data as a validated file drop at the
+same OHLCV boundary as CSV snapshots. It requires explicit provenance review and
+does not fetch live data from vendor APIs or manage credentials.
+
+Paper-to-alpha extraction converts paper/blog text into a draft experiment
+template using simple heuristics. The generated hypothesis, factors, and holding
+period must be reviewed before they become investment research.
+
+Execution simulation converts as-of signal target weights into a broker-free
+order plan with participation gates. It does not route orders, reserve locates,
+send broker instructions, reconcile fills, or implement a kill switch.
+
 As-of signal generation truncates loaded market data to the requested date,
 computes configured factors and signal scores, and emits symbol-level signal
 score, rank, target weight, reason, data timestamp, model/config version, and
@@ -212,8 +241,10 @@ risk status. It does not compute forward returns or claim execution feasibility.
   constraints, robustness diagnostics, and a CSV point-in-time universe adapter,
   plus capacity diagnostics and validated CSV snapshot and locate-history
   adapters, plus reproducibility manifests, run comparison, a local experiment
-  registry, an internal API, and as-of signal snapshots, but these remain research
-  approximations and do not replace broker execution data, direct
+  registry, scheduled batch orchestration, registry export handoff, vendor
+  snapshot ingestion, paper-to-alpha template extraction, an internal API,
+  as-of signal snapshots, and broker-free execution simulation, but these remain
+  research approximations and do not replace broker execution data, direct
   securities-lending feeds, direct vendor market data APIs, venue routing
   analysis, independent alpha review, multiple-hypothesis controls, immutable
   object storage, auth/authorization, or a full production execution simulator.

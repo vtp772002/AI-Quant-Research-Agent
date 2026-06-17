@@ -231,8 +231,8 @@ def parse_config(raw: dict[str, Any], base_dir: str | Path | None = None) -> App
     snapshot_path = _resolve_optional_path(snapshot.get("path"), base_path)
     snapshot_manifest_path = _resolve_optional_path(snapshot.get("manifest_path"), base_path)
     source = str(data.get("source", "synthetic"))
-    if source.lower() == "csv_snapshot" and snapshot_path is None:
-        raise ValueError("data.snapshot.path is required when data.source=csv_snapshot")
+    if source.lower() in {"csv_snapshot", "vendor_snapshot"} and snapshot_path is None:
+        raise ValueError(f"data.snapshot.path is required when data.source={source}")
 
     bootstrap_iterations = int(robustness.get("bootstrap_iterations", 0))
     if bootstrap_iterations < 0:

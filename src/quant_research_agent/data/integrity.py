@@ -148,8 +148,10 @@ def _source_warnings(
         warnings.append("Synthetic data validates mechanics but is not investment evidence.")
     if normalized_source == "yahoo":
         warnings.append("Yahoo Finance is a demo source and does not provide an institutional point-in-time research dataset.")
-    if normalized_source == "csv_snapshot" and provenance is None:
+    if normalized_source in {"csv_snapshot", "vendor_snapshot"} and provenance is None:
         warnings.append("CSV snapshot source is configured without a manifest; provenance and golden validation are incomplete.")
+    if normalized_source == "vendor_snapshot":
+        warnings.append("Vendor snapshot data requires entitlement, survivorship, and corporate-action review before production use.")
     if not point_in_time_universe:
         warnings.append("Universe membership is not marked point-in-time; survivorship or lookahead bias may remain.")
     if not survivorship_bias_free:
