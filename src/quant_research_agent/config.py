@@ -14,6 +14,13 @@ class UniverseProviderConfig:
 
 
 @dataclass(frozen=True)
+class DataSnapshotConfig:
+    path: Path | None = None
+    manifest_path: Path | None = None
+    require_manifest_hash: bool = True
+
+
+@dataclass(frozen=True)
 class DataConfig:
     source: str
     universe: list[str]
@@ -21,6 +28,7 @@ class DataConfig:
     end: str
     seed: int = 42
     universe_provider: UniverseProviderConfig = field(default_factory=UniverseProviderConfig)
+    snapshot: DataSnapshotConfig = field(default_factory=DataSnapshotConfig)
     sectors: dict[str, str] | None = None
     point_in_time_universe: bool = False
     survivorship_bias_free: bool = False
@@ -85,6 +93,7 @@ class StressTestConfig:
 class ShortingConfig:
     borrow_fee_bps: float = 0.0
     shortable_symbols: list[str] | None = None
+    locate_history_path: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -94,6 +103,13 @@ class RobustnessConfig:
     holding_periods: list[int] = field(default_factory=list)
     quantiles: list[float] = field(default_factory=list)
     cost_multipliers: list[float] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class CapacityConfig:
+    notionals: list[float] = field(default_factory=list)
+    max_trade_participation: float = 0.10
+    max_position_weight: float = 0.10
 
 
 @dataclass(frozen=True)
@@ -107,6 +123,7 @@ class ExperimentConfig:
     stress_tests: StressTestConfig
     shorting: ShortingConfig
     robustness: RobustnessConfig
+    capacity: CapacityConfig
 
 
 @dataclass(frozen=True)
@@ -138,6 +155,7 @@ def parse_config(raw: dict[str, Any], base_dir: str | Path | None = None) -> App
     stress_tests = experiment.get("stress_tests", {}) or {}
     shorting = experiment.get("shorting", {}) or {}
     robustness = experiment.get("robustness", {}) or {}
+    capacity = experiment.get("capacity", {}) or {}
     neutralization = stress_tests.get("neutralization", {}) or {}
     liquidity = stress_tests.get("liquidity", {}) or {}
     report = raw["report"]
@@ -195,6 +213,7 @@ def parse_config(raw: dict[str, Any], base_dir: str | Path | None = None) -> App
         unknown_shortable = set(parsed_shortable_symbols) - configured_universe if configured_universe else set()
         if unknown_shortable:
             raise ValueError(f"experiment.shorting.shortable_symbols contains unknown symbols: {sorted(unknown_shortable)}")
+    locate_history_path = _resolve_optional_path(shorting.get("locate_history_path"), base_path)
 
     universe_provider = data.get("universe_provider", {}) or {}
     universe_provider_kind = str(universe_provider.get("kind", "static"))
@@ -206,6 +225,13 @@ def parse_config(raw: dict[str, Any], base_dir: str | Path | None = None) -> App
             parsed_universe_provider_path = base_path / parsed_universe_provider_path
     if universe_provider_kind == "static" and not data.get("universe"):
         raise ValueError("data.universe is required when data.universe_provider.kind is static")
+
+    snapshot = data.get("snapshot", {}) or {}
+    snapshot_path = _resolve_optional_path(snapshot.get("path"), base_path)
+    snapshot_manifest_path = _resolve_optional_path(snapshot.get("manifest_path"), base_path)
+    source = str(data.get("source", "synthetic"))
+    if source.lower() == "csv_snapshot" and snapshot_path is None:
+        raise ValueError("data.snapshot.path is required when data.source=csv_snapshot")
 
     bootstrap_iterations = int(robustness.get("bootstrap_iterations", 0))
     if bootstrap_iterations < 0:
@@ -223,6 +249,18 @@ def parse_config(raw: dict[str, Any], base_dir: str | Path | None = None) -> App
     if any(value < 0.0 for value in cost_multipliers):
         raise ValueError("experiment.robustness.cost_multipliers must be non-negative")
 
+    capacity_notionals = [float(value) for value in capacity.get("notionals", [])]
+    if any(value <= 0.0 for value in capacity_notionals):
+        raise ValueError("experiment.capacity.notionals must contain positive values")
+
+    max_trade_participation = float(capacity.get("max_trade_participation", 0.10))
+    if not 0.0 < max_trade_participation <= 1.0:
+        raise ValueError("experiment.capacity.max_trade_participation must be between 0 and 1")
+
+    max_position_weight = float(capacity.get("max_position_weight", 0.10))
+    if not 0.0 < max_position_weight <= 1.0:
+        raise ValueError("experiment.capacity.max_position_weight must be between 0 and 1")
+
     sectors = data.get("sectors")
     parsed_sectors = None
     if sectors:
@@ -230,7 +268,7 @@ def parse_config(raw: dict[str, Any], base_dir: str | Path | None = None) -> App
 
     return AppConfig(
         data=DataConfig(
-            source=str(data.get("source", "synthetic")),
+            source=source,
             universe=[str(symbol).upper() for symbol in data.get("universe", [])],
             start=str(data["start"]),
             end=str(data["end"]),
@@ -238,6 +276,11 @@ def parse_config(raw: dict[str, Any], base_dir: str | Path | None = None) -> App
             universe_provider=UniverseProviderConfig(
                 kind=universe_provider_kind,
                 path=parsed_universe_provider_path,
+            ),
+            snapshot=DataSnapshotConfig(
+                path=snapshot_path,
+                manifest_path=snapshot_manifest_path,
+                require_manifest_hash=bool(snapshot.get("require_manifest_hash", True)),
             ),
             sectors=parsed_sectors,
             point_in_time_universe=bool(data.get("point_in_time_universe", False)),
@@ -288,6 +331,7 @@ def parse_config(raw: dict[str, Any], base_dir: str | Path | None = None) -> App
             shorting=ShortingConfig(
                 borrow_fee_bps=borrow_fee_bps,
                 shortable_symbols=parsed_shortable_symbols,
+                locate_history_path=locate_history_path,
             ),
             robustness=RobustnessConfig(
                 bootstrap_iterations=bootstrap_iterations,
@@ -296,9 +340,23 @@ def parse_config(raw: dict[str, Any], base_dir: str | Path | None = None) -> App
                 quantiles=robustness_quantiles,
                 cost_multipliers=cost_multipliers,
             ),
+            capacity=CapacityConfig(
+                notionals=capacity_notionals,
+                max_trade_participation=max_trade_participation,
+                max_position_weight=max_position_weight,
+            ),
         ),
         report=ReportConfig(
             output_path=Path(report.get("output_path", "reports/sample_research_report.md")),
             experiments_path=Path(report.get("experiments_path", "results/experiments.csv")),
         ),
     )
+
+
+def _resolve_optional_path(value: object, base_path: Path) -> Path | None:
+    if value is None:
+        return None
+    path = Path(str(value))
+    if not path.is_absolute():
+        path = base_path / path
+    return path

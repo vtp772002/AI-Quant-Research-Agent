@@ -9,6 +9,7 @@ __pycache__/
 .pytest_cache/
 *.egg-info/
 .DS_Store
+results/runs/
 
 # Rust build output for harness tooling.
 target/

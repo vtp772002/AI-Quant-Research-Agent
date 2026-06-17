@@ -4,6 +4,7 @@ import pandas as pd
 
 from quant_research_agent.backtest.engine import BacktestResult, run_long_short_backtest
 from quant_research_agent.config import AppConfig
+from quant_research_agent.data.borrow import BorrowAvailability
 
 
 def evaluate_stress_tests(
@@ -11,6 +12,7 @@ def evaluate_stress_tests(
     factors: pd.DataFrame,
     signal: pd.Series,
     config: AppConfig,
+    borrow_availability: BorrowAvailability | None = None,
 ) -> dict[str, BacktestResult]:
     stress_results: dict[str, BacktestResult] = {}
     neutralized_signal: pd.Series | None = None
@@ -18,7 +20,7 @@ def evaluate_stress_tests(
 
     if config.experiment.stress_tests.neutralization.enabled:
         neutralized_signal = _sector_neutralize_signal(signal, config.data.sectors or {})
-        stress_results["sector_neutral_signal"] = _run_backtest(market_data, neutralized_signal, config)
+        stress_results["sector_neutral_signal"] = _run_backtest(market_data, neutralized_signal, config, borrow_availability)
 
     if config.experiment.stress_tests.liquidity.enabled:
         liquidity_signal = _apply_liquidity_filter(
@@ -26,7 +28,7 @@ def evaluate_stress_tests(
             dollar_volume=factors["dollar_volume_20d"],
             min_rank=config.experiment.stress_tests.liquidity.min_dollar_volume_rank,
         )
-        stress_results[_liquidity_strategy_name(config)] = _run_backtest(market_data, liquidity_signal, config)
+        stress_results[_liquidity_strategy_name(config)] = _run_backtest(market_data, liquidity_signal, config, borrow_availability)
 
     if neutralized_signal is not None and liquidity_signal is not None:
         combined_signal = _apply_liquidity_filter(
@@ -38,12 +40,18 @@ def evaluate_stress_tests(
             market_data,
             combined_signal,
             config,
+            borrow_availability,
         )
 
     return stress_results
 
 
-def _run_backtest(market_data: pd.DataFrame, signal: pd.Series, config: AppConfig) -> BacktestResult:
+def _run_backtest(
+    market_data: pd.DataFrame,
+    signal: pd.Series,
+    config: AppConfig,
+    borrow_availability: BorrowAvailability | None,
+) -> BacktestResult:
     return run_long_short_backtest(
         market_data=market_data,
         signal=signal,
@@ -57,6 +65,8 @@ def _run_backtest(market_data: pd.DataFrame, signal: pd.Series, config: AppConfi
         portfolio_notional=config.experiment.backtest.portfolio_notional,
         borrow_fee_bps=config.experiment.shorting.borrow_fee_bps,
         shortable_symbols=config.experiment.shorting.shortable_symbols,
+        shortable_by_date=borrow_availability.shortable if borrow_availability is not None else None,
+        borrow_fee_bps_by_date=borrow_availability.borrow_fee_bps if borrow_availability is not None else None,
         walk_forward_windows=config.experiment.validation.walk_forward.window_count,
         walk_forward_min_train_fraction=config.experiment.validation.walk_forward.min_train_fraction,
     )

@@ -7,6 +7,7 @@ import pandas as pd
 
 from quant_research_agent.backtest.engine import BacktestResult, run_long_short_backtest
 from quant_research_agent.config import AppConfig
+from quant_research_agent.data.borrow import BorrowAvailability
 
 
 @dataclass(frozen=True)
@@ -44,11 +45,22 @@ def compute_robustness_diagnostics(
     signal: pd.Series,
     backtest: BacktestResult,
     config: AppConfig,
+    borrow_availability: BorrowAvailability | None = None,
 ) -> RobustnessDiagnostics:
     return RobustnessDiagnostics(
         bootstrap=_bootstrap_summary(backtest=backtest, config=config),
-        parameter_sensitivity=_parameter_sensitivity(market_data=market_data, signal=signal, config=config),
-        cost_sensitivity=_cost_sensitivity(market_data=market_data, signal=signal, config=config),
+        parameter_sensitivity=_parameter_sensitivity(
+            market_data=market_data,
+            signal=signal,
+            config=config,
+            borrow_availability=borrow_availability,
+        ),
+        cost_sensitivity=_cost_sensitivity(
+            market_data=market_data,
+            signal=signal,
+            config=config,
+            borrow_availability=borrow_availability,
+        ),
     )
 
 
@@ -90,7 +102,12 @@ def _bootstrap_summary(backtest: BacktestResult, config: AppConfig) -> Bootstrap
     )
 
 
-def _parameter_sensitivity(market_data: pd.DataFrame, signal: pd.Series, config: AppConfig) -> list[SensitivityResult]:
+def _parameter_sensitivity(
+    market_data: pd.DataFrame,
+    signal: pd.Series,
+    config: AppConfig,
+    borrow_availability: BorrowAvailability | None,
+) -> list[SensitivityResult]:
     holding_periods = config.experiment.robustness.holding_periods
     quantiles = config.experiment.robustness.quantiles
     if not holding_periods or not quantiles:
@@ -106,6 +123,7 @@ def _parameter_sensitivity(market_data: pd.DataFrame, signal: pd.Series, config:
                 holding_period=holding_period,
                 quantile=quantile,
                 cost_multiplier=1.0,
+                borrow_availability=borrow_availability,
             )
             results.append(
                 SensitivityResult(
@@ -119,7 +137,12 @@ def _parameter_sensitivity(market_data: pd.DataFrame, signal: pd.Series, config:
     return results
 
 
-def _cost_sensitivity(market_data: pd.DataFrame, signal: pd.Series, config: AppConfig) -> list[SensitivityResult]:
+def _cost_sensitivity(
+    market_data: pd.DataFrame,
+    signal: pd.Series,
+    config: AppConfig,
+    borrow_availability: BorrowAvailability | None,
+) -> list[SensitivityResult]:
     multipliers = config.experiment.robustness.cost_multipliers
     if not multipliers:
         return []
@@ -133,6 +156,7 @@ def _cost_sensitivity(market_data: pd.DataFrame, signal: pd.Series, config: AppC
             holding_period=config.experiment.backtest.holding_period,
             quantile=config.experiment.backtest.quantile,
             cost_multiplier=multiplier,
+            borrow_availability=borrow_availability,
         )
         results.append(
             SensitivityResult(
@@ -153,6 +177,7 @@ def _run_variant(
     holding_period: int,
     quantile: float,
     cost_multiplier: float,
+    borrow_availability: BorrowAvailability | None,
 ) -> BacktestResult:
     return run_long_short_backtest(
         market_data=market_data,
@@ -167,6 +192,10 @@ def _run_variant(
         portfolio_notional=config.experiment.backtest.portfolio_notional,
         borrow_fee_bps=config.experiment.shorting.borrow_fee_bps * cost_multiplier,
         shortable_symbols=config.experiment.shorting.shortable_symbols,
+        shortable_by_date=borrow_availability.shortable if borrow_availability is not None else None,
+        borrow_fee_bps_by_date=(
+            borrow_availability.borrow_fee_bps * cost_multiplier if borrow_availability is not None else None
+        ),
     )
 
 

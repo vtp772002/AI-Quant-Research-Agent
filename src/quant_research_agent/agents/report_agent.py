@@ -37,6 +37,7 @@ class ReportAgent:
                 f"- Long/short quantile: {config.experiment.backtest.quantile:.0%}",
                 f"- Borrow fee: {config.experiment.shorting.borrow_fee_bps:.1f} bps annualized",
                 f"- Shortable universe: {_shortable_summary(config)}",
+                f"- Locate history: {_locate_history_summary(result)}",
                 "",
                 "## Data Integrity",
                 "",
@@ -80,6 +81,16 @@ class ReportAgent:
                 "",
                 _execution_cost_table(result),
                 "",
+                "## Borrow Availability",
+                "",
+                _borrow_availability_table(result),
+                "",
+                "## Capacity Diagnostics",
+                "",
+                _concentration_table(result),
+                "",
+                _capacity_curve_table(result),
+                "",
                 "## Robustness Diagnostics",
                 "",
                 _bootstrap_table(result),
@@ -114,6 +125,8 @@ class ReportAgent:
                 "",
                 _robustness_interpretation(result),
                 "",
+                _capacity_interpretation(result),
+                "",
                 _walk_forward_interpretation(result),
                 "",
                 "The train/test split is chronological. Test-period results are the primary evidence because they are less exposed to factor selection bias.",
@@ -123,20 +136,25 @@ class ReportAgent:
                 "- Synthetic data is useful for deterministic validation but is not investment evidence.",
                 "- Stress tests are diagnostics; the primary portfolio remains a simple long-short ranking portfolio.",
                 "- Transaction costs and borrow costs are research approximations, not broker execution or securities-lending records.",
-                "- No corporate actions or survivorship controls are included yet.",
+                "- Snapshot manifests validate reproducibility and provenance, but they are not a substitute for direct vendor entitlements or independent data audits.",
                 "",
                 "## Next Experiments",
                 "",
                 "- Run the same signal on Yahoo Finance data for a real equity universe.",
                 "- Replace redundant factors or orthogonalize correlated exposures before combining signals.",
-                "- Add point-in-time vendor data integration with survivorship-safe universes.",
+                "- Add direct vendor data integration that writes validated snapshot manifests.",
                 "- Compare this factor against pure momentum, pure low volatility, and reversal baselines.",
                 "",
             ]
         )
 
 
-def write_experiment_row(result: ResearchRunResult, config: AppConfig) -> Path:
+def write_experiment_row(
+    result: ResearchRunResult,
+    config: AppConfig,
+    run_id: str = "",
+    config_sha256: str = "",
+) -> Path:
     path = config.report.experiments_path
     path.parent.mkdir(parents=True, exist_ok=True)
     rows = _experiment_rows_for_strategy(
@@ -144,6 +162,10 @@ def write_experiment_row(result: ResearchRunResult, config: AppConfig) -> Path:
         strategy="agent_signal",
         source=config.data.source,
         universe_size=len(result.universe.symbols),
+        data_integrity=result.data_integrity,
+        borrow_availability=result.borrow_availability,
+        run_id=run_id,
+        config_sha256=config_sha256,
         backtest=result.backtest,
     )
     for name, backtest in result.baselines.items():
@@ -153,6 +175,10 @@ def write_experiment_row(result: ResearchRunResult, config: AppConfig) -> Path:
                 strategy=name,
                 source=config.data.source,
                 universe_size=len(result.universe.symbols),
+                data_integrity=result.data_integrity,
+                borrow_availability=result.borrow_availability,
+                run_id=run_id,
+                config_sha256=config_sha256,
                 backtest=backtest,
             )
         )
@@ -163,6 +189,10 @@ def write_experiment_row(result: ResearchRunResult, config: AppConfig) -> Path:
                 strategy=name,
                 source=config.data.source,
                 universe_size=len(result.universe.symbols),
+                data_integrity=result.data_integrity,
+                borrow_availability=result.borrow_availability,
+                run_id=run_id,
+                config_sha256=config_sha256,
                 backtest=backtest,
             )
         )
@@ -184,9 +214,15 @@ def write_experiment_row(result: ResearchRunResult, config: AppConfig) -> Path:
         frame = pd.concat([existing, frame], ignore_index=True)
     leading = [
         "experiment",
+        "run_id",
+        "config_sha256",
         "strategy",
         "window",
         "source",
+        "dataset_id",
+        "vendor",
+        "as_of",
+        "locate_history",
         "universe_size",
         "train_start",
         "train_end",
@@ -204,12 +240,23 @@ def _experiment_rows_for_strategy(
     strategy: str,
     source: str,
     universe_size: int,
+    data_integrity,
+    borrow_availability,
+    run_id: str,
+    config_sha256: str,
     backtest: BacktestResult,
 ) -> list[dict[str, object]]:
+    provenance = data_integrity.provenance
     base = {
         "experiment": experiment,
+        "run_id": run_id,
+        "config_sha256": config_sha256,
         "strategy": strategy,
         "source": source,
+        "dataset_id": provenance.dataset_id if provenance is not None else "",
+        "vendor": provenance.vendor if provenance is not None else "",
+        "as_of": provenance.as_of if provenance is not None else "",
+        "locate_history": borrow_availability.summary.path if borrow_availability is not None else "",
         "universe_size": universe_size,
     }
     rows: list[dict[str, object]] = [
@@ -281,6 +328,77 @@ def _execution_cost_table(result: ResearchRunResult) -> str:
     return "\n".join(rows)
 
 
+def _borrow_availability_table(result: ResearchRunResult) -> str:
+    if result.borrow_availability is None:
+        return "No date-aware locate or borrow availability history was configured."
+
+    summary = result.borrow_availability.summary
+    rows = [
+        "| Field | Value |",
+        "| --- | ---: |",
+        f"| Rows | {summary.row_count} |",
+        f"| Symbols | {len(summary.symbols)} |",
+        f"| Date range | {summary.start} to {summary.end} |",
+        f"| Coverage | {summary.coverage:.2%} |",
+        f"| Unavailable rows | {summary.unavailable_rows} |",
+        f"| Hard-to-borrow rows | {summary.hard_to_borrow_rows} |",
+        f"| Avg borrow fee | {summary.average_borrow_fee_bps:.1f} bps |",
+        f"| Max borrow fee | {summary.max_borrow_fee_bps:.1f} bps |",
+    ]
+    if summary.warnings:
+        rows.extend(["", "Warnings:"] + [f"- {warning}" for warning in summary.warnings])
+    return "\n".join(rows)
+
+
+def _concentration_table(result: ResearchRunResult) -> str:
+    item = result.capacity.concentration
+    return "\n".join(
+        [
+            "| Metric | Value |",
+            "| --- | ---: |",
+            f"| Max single-name weight | {item.max_single_name_weight:.2%} |",
+            f"| Avg single-name max weight | {item.average_single_name_weight:.2%} |",
+            f"| Avg effective positions | {item.average_effective_positions:.2f} |",
+            f"| Min effective positions | {item.min_effective_positions:.2f} |",
+            f"| Avg gross exposure | {item.average_gross_exposure:.2f}x |",
+            f"| Max gross exposure | {item.max_gross_exposure:.2f}x |",
+            f"| Position weight breaches | {item.position_weight_breach_count} |",
+        ]
+    )
+
+
+def _capacity_curve_table(result: ResearchRunResult) -> str:
+    if not result.capacity.capacity_curve:
+        return "Capacity curve is not configured."
+
+    rows = [
+        "Capacity curve:",
+        "",
+        "| Notional | Test Sharpe | Test Return | Avg Cost | Avg Impact | Avg Participation | Max Participation | Breaches | Pass |",
+        "| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
+    ]
+    for item in result.capacity.capacity_curve:
+        passed = "yes" if item.passes_participation_limit and item.passes_positive_sharpe else "no"
+        rows.append(
+            "| {notional:,.0f} | {sharpe:.2f} | {total_return:.2%} | {avg_cost:.2%} | {impact:.2%} | {avg_part:.2%} | {max_part:.2%} | {breaches} | {passed} |".format(
+                notional=item.notional,
+                sharpe=item.test_sharpe,
+                total_return=item.test_total_return,
+                avg_cost=item.average_total_cost,
+                impact=item.average_impact_cost,
+                avg_part=item.average_trade_participation,
+                max_part=item.max_trade_participation,
+                breaches=item.participation_breach_count,
+                passed=passed,
+            )
+        )
+    if result.capacity.max_capacity_notional is not None:
+        rows.extend(["", f"Estimated capacity: {result.capacity.max_capacity_notional:,.0f} notional under configured gates."])
+    if result.capacity.warnings:
+        rows.extend(["", "Warnings:"] + [f"- {warning}" for warning in result.capacity.warnings])
+    return "\n".join(rows)
+
+
 def _bootstrap_table(result: ResearchRunResult) -> str:
     bootstrap = result.robustness.bootstrap
     if bootstrap is None:
@@ -331,20 +449,34 @@ def _sensitivity_table(title: str, rows_data) -> str:
 
 def _data_integrity_summary(result: ResearchRunResult) -> str:
     report = result.data_integrity
-    return "\n".join(
-        [
-            f"- Source: `{report.source}`",
-            f"- Universe source: `{result.universe.source}`",
-            f"- Membership rows: {len(result.universe.membership)}",
-            f"- Requested symbols: {len(report.requested_symbols)}",
-            f"- Observed symbols: {len(report.observed_symbols)}",
-            f"- Date rows: {report.date_count}",
-            f"- Panel rows: {report.row_count}",
-            f"- Point-in-time universe: {_yes_no(report.point_in_time_universe)}",
-            f"- Survivorship-bias-free: {_yes_no(report.survivorship_bias_free)}",
-            f"- Corporate actions institutional-grade: {_yes_no(report.corporate_actions_adjusted)}",
-        ]
-    )
+    rows = [
+        f"- Source: `{report.source}`",
+        f"- Universe source: `{result.universe.source}`",
+        f"- Membership rows: {len(result.universe.membership)}",
+        f"- Requested symbols: {len(report.requested_symbols)}",
+        f"- Observed symbols: {len(report.observed_symbols)}",
+        f"- Date rows: {report.date_count}",
+        f"- Panel rows: {report.row_count}",
+        f"- Point-in-time universe: {_yes_no(report.point_in_time_universe)}",
+        f"- Survivorship-bias-free: {_yes_no(report.survivorship_bias_free)}",
+        f"- Corporate actions institutional-grade: {_yes_no(report.corporate_actions_adjusted)}",
+    ]
+    if report.provenance is not None:
+        rows.extend(_provenance_summary(report.provenance))
+    return "\n".join(rows)
+
+
+def _provenance_summary(provenance) -> list[str]:
+    return [
+        f"- Snapshot dataset: `{provenance.dataset_id}`",
+        f"- Snapshot vendor: `{provenance.vendor}`",
+        f"- Snapshot as-of: `{provenance.as_of}`",
+        f"- Snapshot manifest: `{provenance.manifest_path}`",
+        f"- Snapshot hash valid: {_yes_no(provenance.hash_matches)}",
+        f"- Snapshot row count valid: {_yes_no(provenance.row_count_matches)}",
+        f"- Snapshot symbol set valid: {_yes_no(provenance.symbol_set_matches)}",
+        f"- Snapshot date range valid: {_yes_no(provenance.date_range_matches)}",
+    ]
 
 
 def _data_quality_table(result: ResearchRunResult) -> str:
@@ -547,6 +679,18 @@ def _robustness_interpretation(result: ResearchRunResult) -> str:
     return "Robustness diagnostics flag caution: " + "; ".join(weak_points) + "."
 
 
+def _capacity_interpretation(result: ResearchRunResult) -> str:
+    if not result.capacity.capacity_curve:
+        return "Capacity diagnostics were limited to concentration because no notional curve was configured."
+    if result.capacity.max_capacity_notional is None:
+        return "Capacity diagnostics do not identify a configured notional that passes both participation and positive-Sharpe gates."
+    return (
+        "Capacity diagnostics estimate that the signal passes configured gates up to "
+        f"{result.capacity.max_capacity_notional:,.0f} notional. "
+        "Treat this as a research approximation because the model uses average dollar volume, not live order book depth."
+    )
+
+
 def _walk_forward_agent_table(backtest: BacktestResult) -> str:
     if not backtest.walk_forward:
         return "Walk-forward validation is not configured for this experiment."
@@ -630,3 +774,9 @@ def _shortable_summary(config: AppConfig) -> str:
     if shortable is None:
         return "all configured symbols"
     return f"{len(shortable)} configured symbols"
+
+
+def _locate_history_summary(result: ResearchRunResult) -> str:
+    if result.borrow_availability is None:
+        return "not configured"
+    return f"`{result.borrow_availability.summary.path}`"

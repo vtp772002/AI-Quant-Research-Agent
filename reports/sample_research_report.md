@@ -10,6 +10,7 @@
 - Long/short quantile: 20%
 - Borrow fee: 75.0 bps annualized
 - Shortable universe: 18 configured symbols
+- Locate history: not configured
 
 ## Data Integrity
 
@@ -104,6 +105,33 @@ Pairs above absolute Spearman correlation of 0.75:
 | Avg trade participation | 0.38% | 0.51% | 0.42% |
 | Max trade participation | 2.44% | 3.01% | 3.01% |
 
+## Borrow Availability
+
+No date-aware locate or borrow availability history was configured.
+
+## Capacity Diagnostics
+
+| Metric | Value |
+| --- | ---: |
+| Max single-name weight | 33.33% |
+| Avg single-name max weight | 25.99% |
+| Avg effective positions | 8.13 |
+| Min effective positions | 6.86 |
+| Avg gross exposure | 2.00x |
+| Max gross exposure | 2.00x |
+| Position weight breaches | 0 |
+
+Capacity curve:
+
+| Notional | Test Sharpe | Test Return | Avg Cost | Avg Impact | Avg Participation | Max Participation | Breaches | Pass |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| 1,000,000 | 0.07 | -0.77% | 0.12% | 0.01% | 0.05% | 0.30% | 0 | yes |
+| 5,000,000 | -0.01 | -2.97% | 0.15% | 0.04% | 0.26% | 1.51% | 0 | no |
+| 10,000,000 | -0.10 | -5.65% | 0.19% | 0.08% | 0.51% | 3.01% | 0 | no |
+| 25,000,000 | -0.39 | -13.26% | 0.30% | 0.19% | 1.28% | 7.53% | 0 | no |
+
+Estimated capacity: 1,000,000 notional under configured gates.
+
 ## Robustness Diagnostics
 
 | Metric | Mean | 2.5% | 97.5% | Positive Probability |
@@ -182,6 +210,8 @@ Factor diagnostics flagged potentially redundant exposures. The strongest pair i
 
 Robustness diagnostics flag caution: bootstrap Sharpe confidence is weak; parameter sensitivity is fragile; high-cost sensitivity erases positive Sharpe.
 
+Capacity diagnostics estimate that the signal passes configured gates up to 1,000,000 notional. Treat this as a research approximation because the model uses average dollar volume, not live order book depth.
+
 Walk-forward validation supports further research: most agent-signal windows have positive IC and the average window Sharpe is positive.
 
 The train/test split is chronological. Test-period results are the primary evidence because they are less exposed to factor selection bias.
@@ -191,11 +221,22 @@ The train/test split is chronological. Test-period results are the primary evide
 - Synthetic data is useful for deterministic validation but is not investment evidence.
 - Stress tests are diagnostics; the primary portfolio remains a simple long-short ranking portfolio.
 - Transaction costs and borrow costs are research approximations, not broker execution or securities-lending records.
-- No corporate actions or survivorship controls are included yet.
+- Snapshot manifests validate reproducibility and provenance, but they are not a substitute for direct vendor entitlements or independent data audits.
 
 ## Next Experiments
 
 - Run the same signal on Yahoo Finance data for a real equity universe.
 - Replace redundant factors or orthogonalize correlated exposures before combining signals.
-- Add point-in-time vendor data integration with survivorship-safe universes.
+- Add direct vendor data integration that writes validated snapshot manifests.
 - Compare this factor against pure momentum, pure low volatility, and reversal baselines.
+
+## Run Reproducibility
+
+- Run ID: `momentum-low-volatility-demo-20260617T045621Z-8d50e36b08-a1360cc7`
+- Generated at: `2026-06-17T04:56:21Z`
+- Config SHA-256: `8d50e36b08d03a13635e9588afdb9d11f2119cceb04d5533d880cf442431309d`
+- Git commit: `69b38c7dc11d716c7d2e4a6e608fd6d01d058996`
+- Git branch: `main`
+- Git dirty: yes
+- Manifest: `results/runs/momentum-low-volatility-demo-20260617T045621Z-8d50e36b08-a1360cc7/manifest.json`
+- Frozen config: `results/runs/momentum-low-volatility-demo-20260617T045621Z-8d50e36b08-a1360cc7/config.yaml`

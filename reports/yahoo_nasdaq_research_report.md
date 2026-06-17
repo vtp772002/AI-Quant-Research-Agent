@@ -10,6 +10,7 @@
 - Long/short quantile: 20%
 - Borrow fee: 75.0 bps annualized
 - Shortable universe: 18 configured symbols
+- Locate history: not configured
 
 ## Data Integrity
 
@@ -100,6 +101,35 @@ No selected factor pairs exceeded absolute Spearman correlation of 0.75.
 | Avg trade participation | 0.20% | 0.12% | 0.18% |
 | Max trade participation | 1.51% | 0.69% | 1.51% |
 
+## Borrow Availability
+
+No date-aware locate or borrow availability history was configured.
+
+## Capacity Diagnostics
+
+| Metric | Value |
+| --- | ---: |
+| Max single-name weight | 50.00% |
+| Avg single-name max weight | 28.87% |
+| Avg effective positions | 7.71 |
+| Min effective positions | 5.33 |
+| Avg gross exposure | 2.00x |
+| Max gross exposure | 2.00x |
+| Position weight breaches | 7 |
+
+Capacity curve:
+
+| Notional | Test Sharpe | Test Return | Avg Cost | Avg Impact | Avg Participation | Max Participation | Breaches | Pass |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| 1,000,000 | -0.25 | -13.84% | 0.13% | 0.00% | 0.01% | 0.07% | 0 | no |
+| 5,000,000 | -0.27 | -14.43% | 0.14% | 0.01% | 0.06% | 0.35% | 0 | no |
+| 10,000,000 | -0.29 | -15.17% | 0.15% | 0.02% | 0.12% | 0.69% | 0 | no |
+| 25,000,000 | -0.35 | -17.35% | 0.18% | 0.05% | 0.30% | 1.74% | 0 | no |
+
+Warnings:
+- Position concentration breached 35% on 7 rebalance dates.
+- No configured notional passed both participation and positive-Sharpe capacity gates.
+
 ## Robustness Diagnostics
 
 | Metric | Mean | 2.5% | 97.5% | Positive Probability |
@@ -178,6 +208,8 @@ Factor diagnostics did not flag high pairwise redundancy among selected exposure
 
 Robustness diagnostics flag caution: bootstrap Sharpe confidence is weak; bootstrap IC confidence is weak; parameter sensitivity is fragile; high-cost sensitivity erases positive Sharpe.
 
+Capacity diagnostics do not identify a configured notional that passes both participation and positive-Sharpe gates.
+
 Walk-forward validation is not yet stable enough for promotion: inspect the weak windows before adding factor complexity.
 
 The train/test split is chronological. Test-period results are the primary evidence because they are less exposed to factor selection bias.
@@ -187,11 +219,22 @@ The train/test split is chronological. Test-period results are the primary evide
 - Synthetic data is useful for deterministic validation but is not investment evidence.
 - Stress tests are diagnostics; the primary portfolio remains a simple long-short ranking portfolio.
 - Transaction costs and borrow costs are research approximations, not broker execution or securities-lending records.
-- No corporate actions or survivorship controls are included yet.
+- Snapshot manifests validate reproducibility and provenance, but they are not a substitute for direct vendor entitlements or independent data audits.
 
 ## Next Experiments
 
 - Run the same signal on Yahoo Finance data for a real equity universe.
 - Replace redundant factors or orthogonalize correlated exposures before combining signals.
-- Add point-in-time vendor data integration with survivorship-safe universes.
+- Add direct vendor data integration that writes validated snapshot manifests.
 - Compare this factor against pure momentum, pure low volatility, and reversal baselines.
+
+## Run Reproducibility
+
+- Run ID: `yahoo-nasdaq-momentum-low-volatility-20260617T045621Z-da84cab038-f660f305`
+- Generated at: `2026-06-17T04:56:21Z`
+- Config SHA-256: `da84cab03886d0cc9e6e1c163f8df62172a6d742b7f581f27927aceb470bb2ac`
+- Git commit: `69b38c7dc11d716c7d2e4a6e608fd6d01d058996`
+- Git branch: `main`
+- Git dirty: yes
+- Manifest: `results/runs/yahoo-nasdaq-momentum-low-volatility-20260617T045621Z-da84cab038-f660f305/manifest.json`
+- Frozen config: `results/runs/yahoo-nasdaq-momentum-low-volatility-20260617T045621Z-da84cab038-f660f305/config.yaml`

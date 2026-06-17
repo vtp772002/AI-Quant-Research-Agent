@@ -1,38 +1,26 @@
 data:
-  source: synthetic
+  source: csv_snapshot
+  snapshot:
+    path: ../data/golden/institutional_ohlcv_snapshot.csv
+    manifest_path: ../data/golden/institutional_ohlcv_snapshot.yaml
+    require_manifest_hash: true
   universe_provider:
     kind: csv
-    path: universe_membership_demo.csv
+    path: institutional_snapshot_membership_demo.csv
   start: "2020-01-01"
-  end: "2024-12-31"
-  seed: 42
-  point_in_time_universe: true
-  survivorship_bias_free: true
-  corporate_actions_adjusted: false
+  end: "2022-12-31"
   sectors:
-    AAPL: technology
-    MSFT: technology
-    NVDA: semiconductors
-    AMZN: consumer_discretionary
-    META: communication_services
-    GOOGL: communication_services
-    AVGO: semiconductors
-    COST: consumer_staples
-    TSLA: consumer_discretionary
-    NFLX: communication_services
-    AMD: semiconductors
-    ADBE: technology
-    CSCO: technology
-    QCOM: semiconductors
-    TXN: semiconductors
-    INTU: technology
-    AMAT: semiconductors
-    HON: industrials
-    SBUX: consumer_discretionary
-    BKNG: consumer_discretionary
+    AAA: technology
+    BBB: technology
+    CCC: consumer
+    DDD: consumer
+    EEE: industrials
+    FFF: industrials
+    GGG: healthcare
+    HHH: healthcare
 
 experiment:
-  name: point_in_time_synthetic_momentum_low_volatility
+  name: institutional_snapshot_momentum_low_volatility
   train_fraction: 0.7
   signal:
     positive_factors:
@@ -45,7 +33,7 @@ experiment:
   backtest:
     holding_period: 5
     rebalance_days: 5
-    quantile: 0.2
+    quantile: 0.25
     transaction_cost_bps: 5.0
     spread_cost_bps: 2.0
     market_impact_coefficient: 0.10
@@ -63,30 +51,19 @@ experiment:
       min_dollar_volume_rank: 0.2
   shorting:
     borrow_fee_bps: 75.0
+    locate_history_path: ../data/golden/borrow_availability_demo.csv
     shortable_symbols:
-      - AAPL
-      - MSFT
-      - NVDA
-      - AMZN
-      - META
-      - GOOGL
-      - AVGO
-      - COST
-      - NFLX
-      - AMD
-      - ADBE
-      - CSCO
-      - QCOM
-      - TXN
-      - INTU
-      - AMAT
-      - HON
-      - SBUX
+      - AAA
+      - BBB
+      - CCC
+      - DDD
+      - EEE
+      - FFF
   robustness:
     bootstrap_iterations: 200
     bootstrap_seed: 123
     holding_periods: [3, 5, 10]
-    quantiles: [0.15, 0.2, 0.3]
+    quantiles: [0.2, 0.25]
     cost_multipliers: [0.5, 1.0, 2.0]
   capacity:
     notionals: [1000000, 5000000, 10000000, 25000000]
@@ -101,14 +78,10 @@ experiment:
       positive_factors: []
       negative_factors:
         - volatility_20d
-    - name: reversal_5d_only
-      positive_factors:
-        - reversal_5d
-      negative_factors: []
     - name: random_cross_section
       positive_factors: []
       negative_factors: []
 
 report:
-  output_path: reports/point_in_time_synthetic_research_report.md
+  output_path: reports/institutional_snapshot_research_report.md
   experiments_path: results/experiments.csv

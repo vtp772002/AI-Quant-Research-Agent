@@ -106,6 +106,10 @@ experiment:
     holding_periods: [3, 5, 10]
     quantiles: [0.15, 0.2, 0.3]
     cost_multipliers: [0.5, 1.0, 2.0]
+  capacity:
+    notionals: [1000000, 5000000, 10000000, 25000000]
+    max_trade_participation: 0.10
+    max_position_weight: 0.35
   baselines:
     - name: momentum_20d_only
       positive_factors:

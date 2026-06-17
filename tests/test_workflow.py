@@ -8,6 +8,13 @@ from quant_research_agent.config import parse_config
 
 
 def test_research_workflow_produces_metrics_and_report(tmp_path: Path):
+    locate_path = tmp_path / "locates.csv"
+    _write_locate_history(
+        path=locate_path,
+        symbols=["AAA", "BBB", "CCC", "DDD", "EEE", "FFF", "GGG", "HHH"],
+        start="2020-01-01",
+        end="2022-12-31",
+    )
     config = parse_config(
         {
             "data": {
@@ -65,6 +72,7 @@ def test_research_workflow_produces_metrics_and_report(tmp_path: Path):
                 "shorting": {
                     "borrow_fee_bps": 100.0,
                     "shortable_symbols": ["AAA", "BBB", "CCC", "DDD", "EEE", "FFF"],
+                    "locate_history_path": str(locate_path),
                 },
                 "robustness": {
                     "bootstrap_iterations": 50,
@@ -72,6 +80,11 @@ def test_research_workflow_produces_metrics_and_report(tmp_path: Path):
                     "holding_periods": [3, 5],
                     "quantiles": [0.2, 0.25],
                     "cost_multipliers": [0.5, 1.0, 2.0],
+                },
+                "capacity": {
+                    "notionals": [1_000_000, 5_000_000, 20_000_000],
+                    "max_trade_participation": 0.05,
+                    "max_position_weight": 0.35,
                 },
                 "baselines": [
                     {
@@ -111,13 +124,25 @@ def test_research_workflow_produces_metrics_and_report(tmp_path: Path):
     assert result.backtest.metrics["test"]["average_spread_cost"] > 0
     assert result.backtest.metrics["test"]["average_impact_cost"] > 0
     assert result.backtest.metrics["test"]["average_borrow_cost"] > 0
+    assert result.borrow_availability is not None
+    assert result.borrow_availability.summary.unavailable_rows > 0
+    assert result.borrow_availability.summary.hard_to_borrow_rows > 0
     assert result.backtest.metrics["test"]["max_trade_participation"] > 0
     assert result.backtest.costs["total_cost"].gt(0).any()
     assert result.backtest.positions[result.backtest.positions < 0].dropna(axis=1, how="all").columns.isin(["AAA", "BBB", "CCC", "DDD", "EEE", "FFF"]).all()
+    negative_positions = result.backtest.positions.stack()
+    negative_positions = negative_positions[negative_positions < 0]
+    for index in negative_positions.index:
+        assert bool(result.borrow_availability.shortable.loc[index[0], index[1]])
     assert result.robustness.bootstrap is not None
     assert result.robustness.bootstrap.iterations == 50
     assert len(result.robustness.parameter_sensitivity) == 4
     assert len(result.robustness.cost_sensitivity) == 3
+    assert result.capacity.concentration.max_single_name_weight > 0
+    assert result.capacity.concentration.average_effective_positions > 0
+    assert len(result.capacity.capacity_curve) == 3
+    assert result.capacity.capacity_curve[-1].max_trade_participation >= result.capacity.capacity_curve[0].max_trade_participation
+    assert any(item.participation_breach_count > 0 for item in result.capacity.capacity_curve)
     assert len(result.backtest.walk_forward) == 3
     assert result.backtest.walk_forward[0].metrics["observations"] > 0
     assert result.factor_diagnostics.selected_factors == ["momentum_20d", "volatility_20d", "reversal_20d"]
@@ -143,6 +168,10 @@ def test_research_workflow_produces_metrics_and_report(tmp_path: Path):
     assert "momentum_20d | reversal_20d" in report_text
     assert "Baseline Comparison" in report_text
     assert "Execution Costs" in report_text
+    assert "Borrow Availability" in report_text
+    assert "Hard-to-borrow rows" in report_text
+    assert "Capacity Diagnostics" in report_text
+    assert "Capacity curve" in report_text
     assert "Robustness Diagnostics" in report_text
     assert "Avg borrow cost" in report_text
     assert "Stress Tests" in report_text
@@ -165,6 +194,22 @@ def test_research_workflow_produces_metrics_and_report(tmp_path: Path):
     assert {"full_sample", "wf_01", "wf_02", "wf_03"}.issubset(set(experiment_rows["window"]))
     assert "test_average_total_cost" in experiment_rows.columns
     assert "test_average_borrow_cost" in experiment_rows.columns
+    assert "locate_history" in experiment_rows.columns
+    assert experiment_rows["locate_history"].str.contains("locates.csv").any()
     assert experiment_rows["test_average_total_cost"].gt(0).any()
     assert experiment_rows["test_average_borrow_cost"].gt(0).any()
     assert len(experiment_rows) == 28
+
+
+def _write_locate_history(path: Path, symbols: list[str], start: str, end: str) -> None:
+    dates = pd.bdate_range(start=start, end=end)
+    rows = ["date,symbol,shortable,borrow_fee_bps,available_quantity"]
+    for date in dates:
+        for symbol in symbols:
+            shortable = symbol not in {"GGG", "HHH"}
+            if symbol == "FFF" and date.month in {6, 7}:
+                shortable = False
+            fee = 850.0 if symbol == "EEE" else 125.0
+            quantity = 0 if not shortable else 1_000_000
+            rows.append(f"{date.date().isoformat()},{symbol},{str(shortable).lower()},{fee},{quantity}")
+    path.write_text("\n".join(rows), encoding="utf-8")

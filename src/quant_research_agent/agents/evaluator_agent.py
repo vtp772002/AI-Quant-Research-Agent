@@ -5,14 +5,17 @@ from dataclasses import dataclass
 import pandas as pd
 
 from quant_research_agent.agents.baseline_agent import BaselineAgent
+from quant_research_agent.agents.capacity import CapacityDiagnostics, compute_capacity_diagnostics
 from quant_research_agent.agents.factor_agent import FactorAgent
 from quant_research_agent.agents.hypothesis_agent import Hypothesis, HypothesisAgent
 from quant_research_agent.agents.robustness import RobustnessDiagnostics, compute_robustness_diagnostics
 from quant_research_agent.agents.stress_tests import evaluate_stress_tests
 from quant_research_agent.backtest.engine import BacktestResult, run_long_short_backtest
 from quant_research_agent.config import AppConfig
+from quant_research_agent.data.borrow import BorrowAvailability, load_borrow_availability
 from quant_research_agent.data.integrity import DataIntegrityReport, assess_market_data_integrity
 from quant_research_agent.data.loader import MarketDataRequest, load_market_data
+from quant_research_agent.data.snapshot import load_snapshot_provenance
 from quant_research_agent.data.universe import UniverseResolution, apply_universe_membership, resolve_universe
 from quant_research_agent.factors.diagnostics import (
     FactorDiagnostics,
@@ -27,6 +30,7 @@ class ResearchRunResult:
     hypothesis: Hypothesis
     universe: UniverseResolution
     market_data: pd.DataFrame
+    borrow_availability: BorrowAvailability | None
     data_integrity: DataIntegrityReport
     factors: pd.DataFrame
     signal: pd.Series
@@ -35,6 +39,7 @@ class ResearchRunResult:
     stress_tests: dict[str, BacktestResult]
     factor_diagnostics: FactorDiagnostics
     robustness: RobustnessDiagnostics
+    capacity: CapacityDiagnostics
 
 
 def run_research_workflow(config: AppConfig) -> ResearchRunResult:
@@ -53,9 +58,21 @@ def run_research_workflow(config: AppConfig) -> ResearchRunResult:
             start=config.data.start,
             end=config.data.end,
             seed=config.data.seed,
+            snapshot_path=config.data.snapshot.path,
         )
     )
     market_data = apply_universe_membership(market_data, universe.membership)
+    borrow_availability = load_borrow_availability(
+        path=config.experiment.shorting.locate_history_path,
+        symbols=universe.symbols,
+        dates=market_data.index.get_level_values("date").unique(),
+    )
+    provenance = load_snapshot_provenance(
+        manifest_path=config.data.snapshot.manifest_path,
+        data_path=config.data.snapshot.path,
+        data=market_data,
+        require_hash=config.data.snapshot.require_manifest_hash,
+    )
     data_integrity = assess_market_data_integrity(
         data=market_data,
         source=config.data.source,
@@ -65,6 +82,7 @@ def run_research_workflow(config: AppConfig) -> ResearchRunResult:
         point_in_time_universe=config.data.point_in_time_universe or universe.point_in_time,
         survivorship_bias_free=config.data.survivorship_bias_free or universe.survivorship_bias_free,
         corporate_actions_adjusted=config.data.corporate_actions_adjusted,
+        provenance=provenance,
     )
     factors = compute_factor_library(market_data)
     signal = FactorAgent().build_signal(factors, config.experiment.signal)
@@ -81,6 +99,8 @@ def run_research_workflow(config: AppConfig) -> ResearchRunResult:
         portfolio_notional=config.experiment.backtest.portfolio_notional,
         borrow_fee_bps=config.experiment.shorting.borrow_fee_bps,
         shortable_symbols=config.experiment.shorting.shortable_symbols,
+        shortable_by_date=borrow_availability.shortable if borrow_availability is not None else None,
+        borrow_fee_bps_by_date=borrow_availability.borrow_fee_bps if borrow_availability is not None else None,
         walk_forward_windows=config.experiment.validation.walk_forward.window_count,
         walk_forward_min_train_fraction=config.experiment.validation.walk_forward.min_train_fraction,
     )
@@ -89,12 +109,14 @@ def run_research_workflow(config: AppConfig) -> ResearchRunResult:
         factors=factors,
         config=config,
         reference_index=signal.index,
+        borrow_availability=borrow_availability,
     )
     stress_tests = evaluate_stress_tests(
         market_data=market_data,
         factors=factors,
         signal=signal,
         config=config,
+        borrow_availability=borrow_availability,
     )
     factor_diagnostics = compute_factor_diagnostics(
         factors=factors,
@@ -105,11 +127,20 @@ def run_research_workflow(config: AppConfig) -> ResearchRunResult:
         signal=signal,
         backtest=backtest,
         config=config,
+        borrow_availability=borrow_availability,
+    )
+    capacity = compute_capacity_diagnostics(
+        market_data=market_data,
+        signal=signal,
+        backtest=backtest,
+        config=config,
+        borrow_availability=borrow_availability,
     )
     return ResearchRunResult(
         hypothesis=hypothesis,
         universe=universe,
         market_data=market_data,
+        borrow_availability=borrow_availability,
         data_integrity=data_integrity,
         factors=factors,
         signal=signal,
@@ -118,4 +149,5 @@ def run_research_workflow(config: AppConfig) -> ResearchRunResult:
         stress_tests=stress_tests,
         factor_diagnostics=factor_diagnostics,
         robustness=robustness,
+        capacity=capacity,
     )

@@ -1,0 +1,12 @@
+dataset_id: institutional-golden-demo-v1
+vendor: InternalGolden
+as_of: '2023-01-03'
+created_at: '2023-01-03T00:00:00Z'
+content_sha256: 325139aca2c798e1c6d66e7c9d834d6f548e162ed7625961badd87812a795bc1
+row_count: 6264
+symbols: [AAA, BBB, CCC, DDD, EEE, FFF, GGG, HHH]
+start: '2020-01-01'
+end: '2022-12-30'
+point_in_time_universe: true
+survivorship_bias_free: true
+corporate_actions_adjusted: true

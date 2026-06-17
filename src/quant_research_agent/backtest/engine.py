@@ -44,6 +44,8 @@ def run_long_short_backtest(
     portfolio_notional: float = 1_000_000.0,
     borrow_fee_bps: float = 0.0,
     shortable_symbols: list[str] | None = None,
+    shortable_by_date: pd.DataFrame | None = None,
+    borrow_fee_bps_by_date: pd.DataFrame | None = None,
     walk_forward_windows: int = 0,
     walk_forward_min_train_fraction: float = 0.4,
 ) -> BacktestResult:
@@ -55,7 +57,12 @@ def run_long_short_backtest(
     rebalance_dates = _rebalance_dates(aligned.index.get_level_values("date").unique(), rebalance_days)
     aligned = aligned.loc[aligned.index.get_level_values("date").isin(rebalance_dates)]
 
-    positions = _build_positions(aligned["signal"], quantile=quantile, shortable_symbols=shortable_symbols)
+    positions = _build_positions(
+        aligned["signal"],
+        quantile=quantile,
+        shortable_symbols=shortable_symbols,
+        shortable_by_date=shortable_by_date,
+    )
     raw_returns = _portfolio_forward_returns(positions, aligned["forward_return"])
     turnover = _turnover(positions)
     costs = _transaction_costs(
@@ -67,6 +74,7 @@ def run_long_short_backtest(
         market_impact_coefficient=market_impact_coefficient,
         portfolio_notional=portfolio_notional,
         borrow_fee_bps=borrow_fee_bps,
+        borrow_fee_bps_by_date=borrow_fee_bps_by_date,
         holding_period=holding_period,
     )
     returns = (raw_returns - costs["total_cost"]).rename("strategy_return").dropna()
@@ -125,7 +133,12 @@ def _rebalance_dates(dates: pd.Index, rebalance_days: int) -> pd.Index:
     return pd.Index(sorted(dates))[::rebalance_days]
 
 
-def _build_positions(signal: pd.Series, quantile: float, shortable_symbols: list[str] | None = None) -> pd.DataFrame:
+def _build_positions(
+    signal: pd.Series,
+    quantile: float,
+    shortable_symbols: list[str] | None = None,
+    shortable_by_date: pd.DataFrame | None = None,
+) -> pd.DataFrame:
     shortable = set(shortable_symbols) if shortable_symbols is not None else None
     frames = []
     for date, date_signal in signal.groupby(level="date"):
@@ -138,6 +151,12 @@ def _build_positions(signal: pd.Series, quantile: float, shortable_symbols: list
         shorts = values[values <= short_cutoff].index
         if shortable is not None:
             shorts = shorts.intersection(pd.Index(sorted(shortable)))
+        if shortable_by_date is not None:
+            if date not in shortable_by_date.index:
+                shorts = pd.Index([])
+            else:
+                date_shortable = shortable_by_date.reindex(columns=values.index).loc[date].fillna(False)
+                shorts = shorts.intersection(date_shortable[date_shortable].index)
         if len(longs) == 0 or len(shorts) == 0:
             continue
 
@@ -173,6 +192,7 @@ def _transaction_costs(
     market_impact_coefficient: float,
     portfolio_notional: float,
     borrow_fee_bps: float,
+    borrow_fee_bps_by_date: pd.DataFrame | None,
     holding_period: int,
 ) -> pd.DataFrame:
     close = market_data["adj_close"].unstack("symbol")
@@ -186,8 +206,12 @@ def _transaction_costs(
     spread_cost = turnover * (spread_cost_bps / 10_000.0)
     participation = (trades * portfolio_notional) / adv_20d.replace(0, np.nan)
     impact_cost = (trades * participation.fillna(0.0) * market_impact_coefficient).sum(axis=1)
-    short_exposure = positions.clip(upper=0.0).abs().sum(axis=1)
-    borrow_cost = short_exposure * (borrow_fee_bps / 10_000.0) * (holding_period / 252.0)
+    short_positions = positions.clip(upper=0.0).abs()
+    if borrow_fee_bps_by_date is None:
+        borrow_fee = pd.DataFrame(borrow_fee_bps, index=positions.index, columns=positions.columns)
+    else:
+        borrow_fee = borrow_fee_bps_by_date.reindex(index=positions.index, columns=positions.columns).fillna(borrow_fee_bps)
+    borrow_cost = (short_positions * (borrow_fee / 10_000.0)).sum(axis=1) * (holding_period / 252.0)
     weighted_participation = (trades * participation.fillna(0.0)).sum(axis=1) / trades.sum(axis=1).replace(0, np.nan)
 
     costs = pd.DataFrame(

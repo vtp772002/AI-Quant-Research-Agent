@@ -6,6 +6,7 @@ import pandas as pd
 from quant_research_agent.agents.factor_agent import FactorAgent
 from quant_research_agent.backtest.engine import BacktestResult, run_long_short_backtest
 from quant_research_agent.config import AppConfig, BaselineConfig, SignalConfig
+from quant_research_agent.data.borrow import BorrowAvailability
 
 
 class BaselineAgent:
@@ -15,6 +16,7 @@ class BaselineAgent:
         factors: pd.DataFrame,
         config: AppConfig,
         reference_index: pd.Index,
+        borrow_availability: BorrowAvailability | None = None,
     ) -> dict[str, BacktestResult]:
         baselines: dict[str, BacktestResult] = {}
         for baseline in config.experiment.baselines:
@@ -32,6 +34,8 @@ class BaselineAgent:
                 portfolio_notional=config.experiment.backtest.portfolio_notional,
                 borrow_fee_bps=config.experiment.shorting.borrow_fee_bps,
                 shortable_symbols=config.experiment.shorting.shortable_symbols,
+                shortable_by_date=borrow_availability.shortable if borrow_availability is not None else None,
+                borrow_fee_bps_by_date=borrow_availability.borrow_fee_bps if borrow_availability is not None else None,
                 walk_forward_windows=config.experiment.validation.walk_forward.window_count,
                 walk_forward_min_train_fraction=config.experiment.validation.walk_forward.min_train_fraction,
             )

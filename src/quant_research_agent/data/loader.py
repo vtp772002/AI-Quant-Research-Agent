@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -16,6 +17,7 @@ class MarketDataRequest:
     start: str
     end: str
     seed: int = 42
+    snapshot_path: Path | None = None
 
 
 def load_market_data(request: MarketDataRequest) -> pd.DataFrame:
@@ -29,6 +31,10 @@ def load_market_data(request: MarketDataRequest) -> pd.DataFrame:
         )
     if source == "yahoo":
         return load_yahoo_ohlcv(request.universe, request.start, request.end)
+    if source == "csv_snapshot":
+        if request.snapshot_path is None:
+            raise ValueError("snapshot_path is required for data.source=csv_snapshot")
+        return load_csv_snapshot_ohlcv(request.snapshot_path, request.universe, request.start, request.end)
     raise ValueError(f"unsupported data source: {request.source}")
 
 
@@ -129,6 +135,30 @@ def load_yahoo_ohlcv(symbols: list[str], start: str, end: str) -> pd.DataFrame:
 
     data = pd.concat(frames, ignore_index=True)
     data = data.set_index(["date", "symbol"]).sort_index()
+    return _validate_market_data(data)
+
+
+def load_csv_snapshot_ohlcv(path: Path, symbols: list[str], start: str, end: str) -> pd.DataFrame:
+    frame = pd.read_csv(path)
+    required = {"date", "symbol", *REQUIRED_COLUMNS}
+    missing = required - set(frame.columns)
+    if missing:
+        raise ValueError(f"snapshot data missing columns: {sorted(missing)}")
+
+    frame = frame.copy()
+    frame["date"] = pd.to_datetime(frame["date"])
+    frame["symbol"] = frame["symbol"].astype(str).str.upper()
+    start_date = pd.Timestamp(start)
+    end_date = pd.Timestamp(end)
+    requested_symbols = {symbol.upper() for symbol in symbols}
+    frame = frame[
+        frame["symbol"].isin(requested_symbols)
+        & frame["date"].between(start_date, end_date)
+    ]
+    if frame.empty:
+        raise ValueError("snapshot data has no rows for the requested symbols and date range")
+
+    data = frame.set_index(["date", "symbol"]).sort_index()
     return _validate_market_data(data)
 
 

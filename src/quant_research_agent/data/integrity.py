@@ -4,6 +4,8 @@ from dataclasses import dataclass
 
 import pandas as pd
 
+from quant_research_agent.data.snapshot import SnapshotProvenance
+
 
 @dataclass(frozen=True)
 class SymbolDataQuality:
@@ -32,6 +34,7 @@ class DataIntegrityReport:
     point_in_time_universe: bool
     survivorship_bias_free: bool
     corporate_actions_adjusted: bool
+    provenance: SnapshotProvenance | None
     quality_by_symbol: list[SymbolDataQuality]
     warnings: list[str]
 
@@ -45,6 +48,7 @@ def assess_market_data_integrity(
     point_in_time_universe: bool,
     survivorship_bias_free: bool,
     corporate_actions_adjusted: bool,
+    provenance: SnapshotProvenance | None = None,
 ) -> DataIntegrityReport:
     requested = [symbol.upper() for symbol in requested_symbols]
     observed = sorted(data.index.get_level_values("symbol").unique())
@@ -57,12 +61,19 @@ def assess_market_data_integrity(
         if symbol in observed
     ]
 
+    effective_point_in_time = point_in_time_universe or bool(provenance and provenance.point_in_time_universe)
+    effective_survivorship_free = survivorship_bias_free or bool(provenance and provenance.survivorship_bias_free)
+    effective_corporate_actions = corporate_actions_adjusted or bool(provenance and provenance.corporate_actions_adjusted)
+
     warnings = _source_warnings(
         source=source,
-        point_in_time_universe=point_in_time_universe,
-        survivorship_bias_free=survivorship_bias_free,
-        corporate_actions_adjusted=corporate_actions_adjusted,
+        point_in_time_universe=effective_point_in_time,
+        survivorship_bias_free=effective_survivorship_free,
+        corporate_actions_adjusted=effective_corporate_actions,
+        provenance=provenance,
     )
+    if provenance is not None:
+        warnings.extend(provenance.warnings)
     if missing_symbols:
         warnings.append(f"Missing requested symbols: {', '.join(missing_symbols)}.")
     if duplicate_index_rows:
@@ -89,9 +100,10 @@ def assess_market_data_integrity(
         date_count=int(len(dates)),
         duplicate_index_rows=duplicate_index_rows,
         missing_symbols=missing_symbols,
-        point_in_time_universe=point_in_time_universe,
-        survivorship_bias_free=survivorship_bias_free,
-        corporate_actions_adjusted=corporate_actions_adjusted,
+        point_in_time_universe=effective_point_in_time,
+        survivorship_bias_free=effective_survivorship_free,
+        corporate_actions_adjusted=effective_corporate_actions,
+        provenance=provenance,
         quality_by_symbol=quality,
         warnings=warnings,
     )
@@ -128,6 +140,7 @@ def _source_warnings(
     point_in_time_universe: bool,
     survivorship_bias_free: bool,
     corporate_actions_adjusted: bool,
+    provenance: SnapshotProvenance | None,
 ) -> list[str]:
     warnings: list[str] = []
     normalized_source = source.lower()
@@ -135,6 +148,8 @@ def _source_warnings(
         warnings.append("Synthetic data validates mechanics but is not investment evidence.")
     if normalized_source == "yahoo":
         warnings.append("Yahoo Finance is a demo source and does not provide an institutional point-in-time research dataset.")
+    if normalized_source == "csv_snapshot" and provenance is None:
+        warnings.append("CSV snapshot source is configured without a manifest; provenance and golden validation are incomplete.")
     if not point_in_time_universe:
         warnings.append("Universe membership is not marked point-in-time; survivorship or lookahead bias may remain.")
     if not survivorship_bias_free:

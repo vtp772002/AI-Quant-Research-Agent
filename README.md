@@ -14,7 +14,8 @@ statistical evidence a quant researcher needs to judge a signal?
 
 ## System Design
 
-- `data`: load deterministic synthetic OHLCV data or Yahoo Finance OHLCV data.
+- `data`: load deterministic synthetic OHLCV data, Yahoo Finance OHLCV data, or
+  validated CSV snapshot data with manifest provenance.
 - `factors`: compute a reusable factor library with 20+ price, momentum,
   reversal, volatility, volume, and liquidity factors.
 - `agents`: create a hypothesis, translate selected factors into a ranked
@@ -81,6 +82,12 @@ Point-in-time universe demo:
 python -m quant_research_agent.main --config configs/point_in_time_synthetic_demo.yaml
 ```
 
+Golden snapshot demo:
+
+```bash
+python -m quant_research_agent.main --config configs/institutional_snapshot_demo.yaml
+```
+
 ## Metrics
 
 The research report includes:
@@ -98,11 +105,18 @@ The research report includes:
 - Data integrity diagnostics for source quality, panel coverage, and
   institutional-readiness assumptions.
 - Base, spread, and liquidity-sensitive market-impact transaction costs.
-- Borrow fee and shortability constraints for short-leg feasibility.
+- Borrow fee, shortability constraints, and date-aware locate availability
+  history for short-leg feasibility.
 - Point-in-time CSV universe membership adapter for survivorship-safe research
   interfaces.
 - Bootstrap confidence intervals, parameter sensitivity grids, and cost
   sensitivity diagnostics for overfit and robustness review.
+- Capacity curve, concentration, and trade participation diagnostics for AUM
+  feasibility review.
+- CSV snapshot manifest validation for dataset provenance, SHA-256 content
+  checks, row counts, symbol sets, date ranges, and institutional data flags.
+- Per-run reproducibility packs with run id, config hash, code version, data
+  fingerprints, artifact hashes, frozen config, and manifest JSON.
 
 ## Validation
 
@@ -117,13 +131,16 @@ python -m quant_research_agent.main --config configs/base.yaml --json
 - Yahoo Finance is a convenient demo source, not an institutional data source;
   reports flag this explicitly in the data integrity section.
 - v1 has diagnostic neutralization, liquidity stress tests, robustness checks,
-  and a liquidity-sensitive transaction cost model plus borrow constraints, but
-  no vendor API integration, locate record ingestion, or broker-grade execution
-  simulator.
+  capacity diagnostics, a liquidity-sensitive transaction cost model, borrow
+  constraints, and a CSV locate-history adapter, but no direct vendor API
+  integration, broker-grade locate entitlement feed, or execution simulator.
 
 ## Next Steps
 
-- Add direct vendor data integration behind the point-in-time universe adapter.
-- Add locate/borrow availability history from a securities-lending source.
+- Add direct vendor API integration behind the validated snapshot adapter.
+- Add direct locate/borrow availability integration from a securities-lending
+  source.
+- Add broker-grade execution simulator with venue routing and order scheduling.
+- Add run comparison tooling over reproducibility manifests.
 - Add paper-to-alpha extraction that turns quant papers/blogs into experiment
   templates.

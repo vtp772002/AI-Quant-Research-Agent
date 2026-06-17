@@ -37,12 +37,16 @@ python -m src.main --config configs/base.yaml
    constraints.
 11. Apply base, spread, and liquidity-sensitive market-impact transaction
    costs plus borrow costs for short exposure.
-12. Enforce configured shortability constraints on the short leg.
+12. Enforce configured static shortability and date-aware locate availability
+   constraints on the short leg.
 13. Run configured bootstrap, parameter sensitivity, and cost sensitivity
    robustness diagnostics.
-14. Calculate IC, Sharpe ratio, max drawdown, turnover, costs, borrow drag, and
+14. Run configured capacity and concentration diagnostics across target
+   notionals.
+15. Calculate IC, Sharpe ratio, max drawdown, turnover, costs, borrow drag, and
    total return.
-15. Write a Markdown research report and append experiment metrics.
+16. Write a Markdown research report, append experiment metrics, and emit a
+   reproducibility pack manifest for the run.
 
 ## Data Contract
 
@@ -56,8 +60,9 @@ Market data is represented as a `pandas.DataFrame` indexed by
 - `adj_close`
 - `volume`
 
-v1 supports deterministic synthetic data for validation and Yahoo Finance data
-for real-market experiments.
+v1 supports deterministic synthetic data for validation, Yahoo Finance data for
+real-market experiments, and CSV snapshot data with manifest validation for
+reproducible institutional-style research fixtures.
 
 The Yahoo demo configuration is `configs/yahoo_nasdaq_demo.yaml`. It is intended
 for exploratory real-data runs and may fail when the external data provider is
@@ -67,6 +72,14 @@ The point-in-time synthetic demo configuration is
 `configs/point_in_time_synthetic_demo.yaml`. It uses
 `configs/universe_membership_demo.csv` to resolve active universe membership by
 date and mask market data outside each symbol's membership interval.
+
+The golden snapshot demo configuration is
+`configs/institutional_snapshot_demo.yaml`. It reads
+`data/golden/institutional_ohlcv_snapshot.csv`, verifies
+`data/golden/institutional_ohlcv_snapshot.yaml`, and reports snapshot
+provenance fields including dataset id, vendor, as-of date, SHA-256 validation,
+row-count validation, symbol-set validation, date-range validation, and
+institutional data flags.
 
 Data integrity diagnostics report requested versus observed symbols, row and
 date counts, per-symbol coverage, duplicate index rows, non-positive prices or
@@ -79,6 +92,13 @@ Universe membership can be static or supplied by a CSV provider with
 adapter surface: it resolves symbols for the experiment date range and removes
 rows outside each symbol's membership interval before factors and backtests are
 computed.
+
+CSV snapshot market data uses a separate manifest boundary. The manifest is a
+small YAML file that records the expected dataset id, vendor, as-of date,
+content hash, row count, symbols, date range, and institutional-readiness
+flags. When `require_manifest_hash` is enabled, a hash mismatch fails fast
+before the research workflow can produce a report. Row-count, symbol-set, and
+date-range mismatches are surfaced as provenance warnings and report fields.
 
 ## Methodology
 
@@ -113,10 +133,15 @@ size as a fraction of rolling 20-day average dollar volume using the configured
 portfolio notional and impact coefficient. Reports include average base,
 spread, impact, total cost, and trade participation diagnostics.
 
-Shorting controls can specify an annualized borrow fee and a set of symbols
-eligible for the short leg. If a shortable universe is configured, portfolio
-construction excludes non-shortable symbols from short candidates. Borrow cost
-is charged on short exposure for the configured holding period.
+Shorting controls can specify an annualized fallback borrow fee, a static set
+of symbols eligible for the short leg, and an optional CSV locate history. If a
+static shortable universe is configured, portfolio construction excludes
+non-shortable symbols from short candidates. If a locate history is configured,
+portfolio construction also requires the date-symbol row to be shortable on
+that rebalance date; missing locate rows are treated as not shortable. Borrow
+cost is charged on short exposure for the configured holding period using
+date-symbol borrow fees from the locate history when available and the fallback
+fee otherwise.
 
 Robustness diagnostics are optional post-backtest checks. Bootstrap resampling
 estimates confidence intervals and positive-result probabilities for test
@@ -125,6 +150,20 @@ holding-period and quantile grids. Cost sensitivity reruns the same signal with
 configured transaction-cost and borrow-cost multipliers. These diagnostics do
 not prove investment merit, but they make overfit and fragility visible in the
 report and CLI JSON.
+
+Capacity diagnostics are optional post-backtest checks. Concentration metrics
+measure max single-name weight, effective position count, and gross exposure
+from the realized portfolio weights. Capacity curves rerun the same signal
+across configured portfolio notionals and report the resulting transaction
+costs, market impact, trade participation, test Sharpe, and pass/fail gates for
+positive Sharpe and maximum trade participation.
+
+Every CLI run writes a reproducibility pack under `results/runs/<run_id>/`.
+The pack includes a frozen config copy and `manifest.json` with run id,
+generation timestamp, config SHA-256, git commit/branch/dirty flag, data
+fingerprints, locate-history hash when configured, report hash, experiment CSV
+hash, and primary metrics. The Markdown report includes a `Run
+Reproducibility` section that points to the manifest and frozen config.
 
 ## Limitations
 
@@ -137,7 +176,9 @@ report and CLI JSON.
   for better data controls and independent hypothesis review.
 - v1 includes liquidity-sensitive transaction costs, borrow fees, shortability
   constraints, robustness diagnostics, and a CSV point-in-time universe adapter,
-  but these remain research approximations and do not replace broker execution
-  data, locate records, vendor market data APIs, venue routing analysis,
-  independent alpha review, multiple-hypothesis controls, or a full production
-  execution simulator.
+  plus capacity diagnostics and validated CSV snapshot and locate-history
+  adapters, plus reproducibility manifests, but these remain research
+  approximations and do not replace broker execution data, direct
+  securities-lending feeds, direct vendor market data APIs, venue routing
+  analysis, independent alpha review, multiple-hypothesis controls, immutable
+  object storage, or a full production execution simulator.
