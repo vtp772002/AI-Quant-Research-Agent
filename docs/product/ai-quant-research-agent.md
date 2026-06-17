@@ -75,6 +75,8 @@ investment-advice API and does not place orders.
     fixture, or explicitly allowed command providers and transcript artifacts.
 27. Gate generated idea execution behind a human review queue with draft,
     approved, rejected, ran, and archived statuses.
+28. Persist an append-only review audit ledger for generated idea creation,
+    status changes, and run marking.
 
 ## Data Contract
 
@@ -250,6 +252,12 @@ other queue-driven execution paths; completed approved runs are marked `ran`.
 One-shot `--mine-alpha --run-generated` creates a fresh draft queue and is
 blocked by default unless `--review-override` is explicitly supplied. The
 override keeps that fact in the review note.
+
+Each review queue also writes `review_audit.jsonl` as an append-only ledger.
+The ledger records event id, event type, queue path, idea name, config path,
+source, previous status, next status, actor, note, and timestamp. This gives
+local research reviews a durable operator trail without introducing auth,
+multi-user approvals, or a managed audit database.
 
 Execution simulation converts as-of signal target weights into a broker-free
 order plan with participation gates. It does not route orders, reserve locates,

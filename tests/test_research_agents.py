@@ -12,6 +12,7 @@ from quant_research_agent.idea_review import (
     enforce_review_gate,
     load_review_queue,
     mark_configs_ran,
+    review_audit_events,
     review_summary,
     update_idea_status,
 )
@@ -82,7 +83,10 @@ def test_generate_idea_configs_writes_valid_config_variants(tmp_path: Path):
     assert ideas_path.exists()
     review_queue_path = tmp_path / "ideas" / "review_queue.json"
     assert review_queue_path.exists()
-    assert review_summary(review_queue_path)["counts"]["draft"] == 2
+    summary = review_summary(review_queue_path)
+    assert summary["counts"]["draft"] == 2
+    assert Path(str(summary["audit_path"])).exists()
+    assert [event["event_type"] for event in review_audit_events(review_queue_path)] == ["created", "created"]
     for config_path in config_paths:
         config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
         assert config["experiment"]["name"]
@@ -157,7 +161,13 @@ def test_review_queue_tracks_human_approval_and_ran_status(tmp_path: Path):
     idea_name = payload["records"][0]["idea_name"]
     assert approved_config_paths(queue_path) == []
 
-    update_idea_status(queue_path, idea_name=idea_name, status="approved", note="Human approved.")
+    update_idea_status(
+        queue_path,
+        idea_name=idea_name,
+        status="approved",
+        note="Human approved.",
+        actor="researcher@example.test",
+    )
 
     assert approved_config_paths(queue_path) == config_paths
     assert enforce_review_gate(queue_path, config_paths) == config_paths
@@ -165,11 +175,19 @@ def test_review_queue_tracks_human_approval_and_ran_status(tmp_path: Path):
     assert summary["counts"]["approved"] == 1
     assert summary["records"][0]["note"] == "Human approved."
 
-    mark_configs_ran(queue_path, config_paths, note="Ran after approval.")
+    mark_configs_ran(queue_path, config_paths, note="Ran after approval.", actor="batch-runner")
 
     summary = review_summary(queue_path)
     assert summary["counts"]["ran"] == 1
     assert summary["records"][0]["note"] == "Ran after approval."
+    events = review_audit_events(queue_path)
+    assert [event["event_type"] for event in events] == ["created", "status_changed", "ran"]
+    assert events[1]["from_status"] == "draft"
+    assert events[1]["to_status"] == "approved"
+    assert events[1]["actor"] == "researcher@example.test"
+    assert events[2]["from_status"] == "approved"
+    assert events[2]["to_status"] == "ran"
+    assert events[2]["actor"] == "batch-runner"
 
 
 def test_fixture_provider_generates_validated_ideas_and_transcript(tmp_path: Path):

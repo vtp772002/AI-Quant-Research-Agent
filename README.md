@@ -90,8 +90,9 @@ python -m quant_research_agent.main --generate-ideas --config configs/base.yaml 
 python -m quant_research_agent.main --critique-run results/runs/<run_id>/manifest.json
 python -m quant_research_agent.main --mine-alpha --config configs/base.yaml --n 5 --mine-output-dir results/alpha_mining
 python -m quant_research_agent.main --review-ideas --review-queue results/ideas/review_queue.json
-python -m quant_research_agent.main --set-idea-status approved --idea-name <idea_name> --review-queue results/ideas/review_queue.json --review-note "Approved for local validation."
-python -m quant_research_agent.main --run-approved-ideas --review-queue results/ideas/review_queue.json --batch-output-dir results/idea_batches
+python -m quant_research_agent.main --set-idea-status approved --idea-name <idea_name> --review-queue results/ideas/review_queue.json --review-note "Approved for local validation." --review-actor researcher
+python -m quant_research_agent.main --review-audit --review-queue results/ideas/review_queue.json
+python -m quant_research_agent.main --run-approved-ideas --review-queue results/ideas/review_queue.json --batch-output-dir results/idea_batches --review-actor batch-runner
 ```
 
 The LLM-facing provider boundary supports `deterministic`, `fixture`, and
@@ -103,7 +104,8 @@ written under the idea output directory for review. Generated ideas also write
 `--run-approved-ideas` can execute them. One-shot
 `--mine-alpha --run-generated` is blocked by default because it creates a fresh
 draft queue; use `--review-override` only for explicit operator-approved local
-experiments.
+experiments. Review creation, status changes, and run marking are also written
+to append-only `review_audit.jsonl` events beside the queue.
 
 Run a local production-like container:
 
@@ -212,6 +214,8 @@ The research report includes:
   enforcement before generated ideas become configs.
 - Human review gate for generated research ideas with draft, approved, rejected,
   ran, and archived statuses before generated configs can execute.
+- Append-only review audit ledger for generated idea creation, approval,
+  rejection, archival, and run marking.
 
 ## Validation
 
