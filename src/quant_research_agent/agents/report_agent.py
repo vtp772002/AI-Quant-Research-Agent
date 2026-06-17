@@ -5,6 +5,7 @@ from pathlib import Path
 import pandas as pd
 
 from quant_research_agent.agents.evaluator_agent import ResearchRunResult
+from quant_research_agent.backtest.engine import BacktestResult
 from quant_research_agent.config import AppConfig
 
 
@@ -63,11 +64,19 @@ class ReportAgent:
                 "",
                 _baseline_table(result),
                 "",
+                "## Walk-Forward Validation",
+                "",
+                _walk_forward_agent_table(result.backtest),
+                "",
+                _walk_forward_strategy_table(result),
+                "",
                 "## Interpretation",
                 "",
                 decision,
                 "",
                 _baseline_interpretation(result),
+                "",
+                _walk_forward_interpretation(result),
                 "",
                 "The train/test split is chronological. Test-period results are the primary evidence because they are less exposed to factor selection bias.",
                 "",
@@ -82,7 +91,7 @@ class ReportAgent:
                 "",
                 "- Run the same signal on Yahoo Finance data for a real equity universe.",
                 "- Add factor correlation and redundancy analysis before combining signals.",
-                "- Add walk-forward validation over multiple expanding windows.",
+                "- Stress-test promising factors with neutralization and liquidity constraints.",
                 "- Compare this factor against pure momentum, pure low volatility, and reversal baselines.",
                 "",
             ]
@@ -92,25 +101,22 @@ class ReportAgent:
 def write_experiment_row(result: ResearchRunResult, config: AppConfig) -> Path:
     path = config.report.experiments_path
     path.parent.mkdir(parents=True, exist_ok=True)
-    row = {
-        "experiment": config.experiment.name,
-        "strategy": "agent_signal",
-        "source": config.data.source,
-        "universe_size": len(config.data.universe),
-        **{f"test_{key}": value for key, value in result.backtest.metrics["test"].items()},
-        **{f"full_{key}": value for key, value in result.backtest.metrics["full"].items()},
-    }
-    rows = [row]
+    rows = _experiment_rows_for_strategy(
+        experiment=config.experiment.name,
+        strategy="agent_signal",
+        source=config.data.source,
+        universe_size=len(config.data.universe),
+        backtest=result.backtest,
+    )
     for name, backtest in result.baselines.items():
-        rows.append(
-            {
-                "experiment": config.experiment.name,
-                "strategy": name,
-                "source": config.data.source,
-                "universe_size": len(config.data.universe),
-                **{f"test_{key}": value for key, value in backtest.metrics["test"].items()},
-                **{f"full_{key}": value for key, value in backtest.metrics["full"].items()},
-            }
+        rows.extend(
+            _experiment_rows_for_strategy(
+                experiment=config.experiment.name,
+                strategy=name,
+                source=config.data.source,
+                universe_size=len(config.data.universe),
+                backtest=backtest,
+            )
         )
 
     frame = pd.DataFrame(rows)
@@ -118,19 +124,71 @@ def write_experiment_row(result: ResearchRunResult, config: AppConfig) -> Path:
         existing = pd.read_csv(path)
         if "strategy" not in existing.columns:
             existing["strategy"] = "agent_signal"
-        incoming_keys = set(zip(frame["experiment"], frame["source"], frame["strategy"]))
+        if "window" not in existing.columns:
+            existing["window"] = "full_sample"
+        incoming_strategy_keys = set(zip(frame["experiment"], frame["source"], frame["strategy"]))
         existing = existing[
             ~existing.apply(
-                lambda item: (item["experiment"], item["source"], item["strategy"]) in incoming_keys,
+                lambda item: (item["experiment"], item["source"], item["strategy"]) in incoming_strategy_keys,
                 axis=1,
             )
         ]
         frame = pd.concat([existing, frame], ignore_index=True)
-    leading = ["experiment", "strategy", "source", "universe_size"]
+    leading = [
+        "experiment",
+        "strategy",
+        "window",
+        "source",
+        "universe_size",
+        "train_start",
+        "train_end",
+        "test_start",
+        "test_end",
+    ]
     trailing = [column for column in frame.columns if column not in leading]
     frame = frame[leading + trailing]
     frame.to_csv(path, index=False)
     return path
+
+
+def _experiment_rows_for_strategy(
+    experiment: str,
+    strategy: str,
+    source: str,
+    universe_size: int,
+    backtest: BacktestResult,
+) -> list[dict[str, object]]:
+    base = {
+        "experiment": experiment,
+        "strategy": strategy,
+        "source": source,
+        "universe_size": universe_size,
+    }
+    rows: list[dict[str, object]] = [
+        {
+            **base,
+            "window": "full_sample",
+            "train_start": "",
+            "train_end": "",
+            "test_start": "",
+            "test_end": "",
+            **{f"test_{key}": value for key, value in backtest.metrics["test"].items()},
+            **{f"full_{key}": value for key, value in backtest.metrics["full"].items()},
+        }
+    ]
+    for window in backtest.walk_forward:
+        rows.append(
+            {
+                **base,
+                "window": window.name,
+                "train_start": _date_text(window.train_start),
+                "train_end": _date_text(window.train_end),
+                "test_start": _date_text(window.test_start),
+                "test_end": _date_text(window.test_end),
+                **{f"test_{key}": value for key, value in window.metrics.items()},
+            }
+        )
+    return rows
 
 
 def _metrics_table(sections: dict[str, dict[str, float]]) -> str:
@@ -202,3 +260,75 @@ def _baseline_interpretation(result: ResearchRunResult) -> str:
         f"The strongest out-of-sample Sharpe is from `{best_name}`, not the agent signal. "
         "Treat this as a useful rejection/iteration signal: inspect which factor exposure is carrying the result before adding model complexity."
     )
+
+
+def _walk_forward_agent_table(backtest: BacktestResult) -> str:
+    if not backtest.walk_forward:
+        return "Walk-forward validation is not configured for this experiment."
+
+    rows = [
+        "| Window | Train Through | Test Range | Obs | IC Mean | Sharpe | Hit Rate | Total Return |",
+        "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |",
+    ]
+    for window in backtest.walk_forward:
+        metrics = window.metrics
+        rows.append(
+            "| {name} | {train_end} | {test_start} to {test_end} | {observations:.0f} | {ic_mean:.4f} | {sharpe:.2f} | {ic_hit_rate:.2%} | {total_return:.2%} |".format(
+                name=window.name,
+                train_end=_date_text(window.train_end),
+                test_start=_date_text(window.test_start),
+                test_end=_date_text(window.test_end),
+                **metrics,
+            )
+        )
+    return "\n".join(rows)
+
+
+def _walk_forward_strategy_table(result: ResearchRunResult) -> str:
+    strategies = {"agent_signal": result.backtest, **result.baselines}
+    if not any(backtest.walk_forward for backtest in strategies.values()):
+        return ""
+
+    rows = [
+        "| Strategy | Windows | Mean Test IC | Mean Sharpe | Positive IC Windows | Median Total Return |",
+        "| --- | ---: | ---: | ---: | ---: | ---: |",
+    ]
+    for name, backtest in strategies.items():
+        windows = backtest.walk_forward
+        if not windows:
+            continue
+        ic_values = pd.Series([window.metrics["ic_mean"] for window in windows])
+        sharpe_values = pd.Series([window.metrics["sharpe"] for window in windows])
+        total_returns = pd.Series([window.metrics["total_return"] for window in windows])
+        rows.append(
+            "| {name} | {count} | {mean_ic:.4f} | {mean_sharpe:.2f} | {positive_ic:.2%} | {median_return:.2%} |".format(
+                name=name,
+                count=len(windows),
+                mean_ic=float(ic_values.mean()),
+                mean_sharpe=float(sharpe_values.mean()),
+                positive_ic=float((ic_values > 0).mean()),
+                median_return=float(total_returns.median()),
+            )
+        )
+    return "\n".join(rows)
+
+
+def _walk_forward_interpretation(result: ResearchRunResult) -> str:
+    windows = result.backtest.walk_forward
+    if not windows:
+        return "Walk-forward validation was skipped because it is not configured."
+
+    positive_ic_rate = sum(window.metrics["ic_mean"] > 0 for window in windows) / len(windows)
+    mean_sharpe = sum(window.metrics["sharpe"] for window in windows) / len(windows)
+    if positive_ic_rate >= 0.67 and mean_sharpe > 0:
+        return (
+            "Walk-forward validation supports further research: most agent-signal windows have positive IC "
+            "and the average window Sharpe is positive."
+        )
+    return (
+        "Walk-forward validation is not yet stable enough for promotion: inspect the weak windows before adding factor complexity."
+    )
+
+
+def _date_text(value: pd.Timestamp) -> str:
+    return pd.Timestamp(value).date().isoformat()

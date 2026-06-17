@@ -29,8 +29,9 @@ python -m src.main --config configs/base.yaml
 4. Convert selected factors into a cross-sectional signal.
 5. Run a long-short backtest with chronological train/test split.
 6. Compare the agent signal against configured baseline strategies.
-7. Calculate IC, Sharpe ratio, max drawdown, turnover, and total return.
-8. Write a Markdown research report and append experiment metrics.
+7. Validate signal stability over configured walk-forward windows.
+8. Calculate IC, Sharpe ratio, max drawdown, turnover, and total return.
+9. Write a Markdown research report and append experiment metrics.
 
 ## Data Contract
 
@@ -61,10 +62,17 @@ Baseline strategies use the same data, train/test split, rebalance interval,
 portfolio construction, and transaction cost assumptions as the agent signal.
 This keeps comparison focused on signal quality rather than backtest settings.
 
+When configured, walk-forward validation divides the backtest results into
+multiple chronological test windows after an initial expanding training period.
+The report summarizes agent-signal stability by window and compares aggregate
+walk-forward stability across configured strategies.
+
 ## Limitations
 
 - Synthetic data validates mechanics, not investment merit.
 - Yahoo Finance data is useful for demos but not institutional-grade research
   data.
+- Walk-forward validation tests temporal stability but does not remove the need
+  for better data controls and independent hypothesis review.
 - v1 does not include sector neutralization, borrow constraints, liquidity
   caps, survivorship controls, or a full transaction cost model.

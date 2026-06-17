@@ -9,6 +9,16 @@ from quant_research_agent.backtest.metrics import compute_metric_summary
 
 
 @dataclass(frozen=True)
+class WalkForwardWindow:
+    name: str
+    train_start: pd.Timestamp
+    train_end: pd.Timestamp
+    test_start: pd.Timestamp
+    test_end: pd.Timestamp
+    metrics: dict[str, float]
+
+
+@dataclass(frozen=True)
 class BacktestResult:
     returns: pd.Series
     positions: pd.DataFrame
@@ -16,6 +26,7 @@ class BacktestResult:
     turnover: pd.Series
     metrics: dict[str, dict[str, float]]
     split_date: pd.Timestamp
+    walk_forward: list[WalkForwardWindow]
 
 
 def run_long_short_backtest(
@@ -26,6 +37,8 @@ def run_long_short_backtest(
     rebalance_days: int,
     quantile: float,
     transaction_cost_bps: float,
+    walk_forward_windows: int = 0,
+    walk_forward_min_train_fraction: float = 0.4,
 ) -> BacktestResult:
     close = market_data["adj_close"].unstack("symbol")
     forward_returns = close.shift(-holding_period) / close - 1.0
@@ -63,6 +76,14 @@ def run_long_short_backtest(
             holding_period=holding_period,
         ),
     }
+    walk_forward = _walk_forward_metrics(
+        returns=returns,
+        ic_by_date=ic_by_date,
+        turnover=turnover,
+        holding_period=holding_period,
+        window_count=walk_forward_windows,
+        min_train_fraction=walk_forward_min_train_fraction,
+    )
 
     return BacktestResult(
         returns=returns,
@@ -71,6 +92,7 @@ def run_long_short_backtest(
         turnover=turnover,
         metrics=metrics,
         split_date=split_date,
+        walk_forward=walk_forward,
     )
 
 
@@ -133,3 +155,57 @@ def _split_date(index: pd.Index, train_fraction: float) -> pd.Timestamp:
         raise ValueError("not enough backtest observations for train/test split")
     split_position = min(max(int(len(index) * train_fraction), 1), len(index) - 2)
     return pd.Timestamp(index[split_position])
+
+
+def _walk_forward_metrics(
+    returns: pd.Series,
+    ic_by_date: pd.Series,
+    turnover: pd.Series,
+    holding_period: int,
+    window_count: int,
+    min_train_fraction: float,
+) -> list[WalkForwardWindow]:
+    if window_count <= 0:
+        return []
+
+    returns = returns.sort_index().dropna()
+    if len(returns) < 4:
+        return []
+
+    min_train_size = min(max(int(len(returns) * min_train_fraction), 1), len(returns) - 1)
+    remaining = len(returns) - min_train_size
+    if remaining <= 0:
+        return []
+
+    actual_window_count = min(window_count, remaining)
+    test_size = max(1, remaining // actual_window_count)
+    windows: list[WalkForwardWindow] = []
+
+    for index in range(actual_window_count):
+        test_start_position = min_train_size + (index * test_size)
+        test_end_position = len(returns) if index == actual_window_count - 1 else min(
+            min_train_size + ((index + 1) * test_size),
+            len(returns),
+        )
+        if test_start_position >= len(returns) or test_start_position >= test_end_position:
+            continue
+
+        train_returns = returns.iloc[:test_start_position]
+        test_returns = returns.iloc[test_start_position:test_end_position]
+        windows.append(
+            WalkForwardWindow(
+                name=f"wf_{index + 1:02d}",
+                train_start=pd.Timestamp(train_returns.index[0]),
+                train_end=pd.Timestamp(train_returns.index[-1]),
+                test_start=pd.Timestamp(test_returns.index[0]),
+                test_end=pd.Timestamp(test_returns.index[-1]),
+                metrics=compute_metric_summary(
+                    returns=test_returns,
+                    ic_by_date=ic_by_date.reindex(test_returns.index),
+                    turnover=turnover.reindex(test_returns.index),
+                    holding_period=holding_period,
+                ),
+            )
+        )
+
+    return windows

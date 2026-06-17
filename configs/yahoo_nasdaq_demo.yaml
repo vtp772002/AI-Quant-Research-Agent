@@ -41,6 +41,10 @@ experiment:
     rebalance_days: 5
     quantile: 0.2
     transaction_cost_bps: 5.0
+  validation:
+    walk_forward:
+      window_count: 3
+      min_train_fraction: 0.4
   baselines:
     - name: momentum_20d_only
       positive_factors:

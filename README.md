@@ -86,6 +86,7 @@ The research report includes:
 - Total long-short return.
 - Chronological train/test split.
 - Baseline comparison on test-period metrics.
+- Walk-forward validation across multiple chronological windows.
 
 ## Validation
 
@@ -103,8 +104,6 @@ python -m quant_research_agent.main --config configs/base.yaml --json
 
 ## Next Steps
 
-- Add walk-forward validation.
 - Add factor correlation and redundancy analysis.
-- Add walk-forward validation across multiple expanding windows.
 - Add paper-to-alpha extraction that turns quant papers/blogs into experiment
   templates.

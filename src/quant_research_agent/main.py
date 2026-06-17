@@ -28,6 +28,13 @@ def main(argv: list[str] | None = None) -> int:
         "baselines": {
             name: backtest.metrics for name, backtest in result.baselines.items()
         },
+        "walk_forward": {
+            "agent_signal": _walk_forward_payload(result.backtest),
+            **{
+                name: _walk_forward_payload(backtest)
+                for name, backtest in result.baselines.items()
+            },
+        },
     }
     if args.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
@@ -42,6 +49,20 @@ def main(argv: list[str] | None = None) -> int:
             f"MaxDD={test['max_drawdown']:.2%}, Turnover={test['average_turnover']:.2f}"
         )
     return 0
+
+
+def _walk_forward_payload(backtest) -> list[dict[str, object]]:
+    return [
+        {
+            "window": window.name,
+            "train_start": window.train_start.date().isoformat(),
+            "train_end": window.train_end.date().isoformat(),
+            "test_start": window.test_start.date().isoformat(),
+            "test_end": window.test_end.date().isoformat(),
+            "metrics": window.metrics,
+        }
+        for window in backtest.walk_forward
+    ]
 
 
 if __name__ == "__main__":

@@ -41,11 +41,29 @@ Signal is built from cross-sectional percentile ranks so each rebalance compares
 | reversal_5d_only | 0.0613 | 0.66 | -26.71% | 3.26 | 28.19% |
 | random_cross_section | -0.0001 | -0.54 | -29.51% | 3.25 | -18.46% |
 
+## Walk-Forward Validation
+
+| Window | Train Through | Test Range | Obs | IC Mean | Sharpe | Hit Rate | Total Return |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
+| wf_01 | 2022-07-05 | 2022-07-12 to 2023-08-29 | 58 | 0.0041 | 1.18 | 50.00% | 35.52% |
+| wf_02 | 2023-08-29 | 2023-09-06 to 2024-10-23 | 58 | 0.0045 | -0.39 | 46.55% | -12.53% |
+| wf_03 | 2024-10-23 | 2024-10-30 to 2025-12-19 | 58 | -0.0009 | -0.21 | 48.28% | -8.63% |
+
+| Strategy | Windows | Mean Test IC | Mean Sharpe | Positive IC Windows | Median Total Return |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| agent_signal | 3 | 0.0026 | 0.19 | 66.67% | -8.63% |
+| momentum_20d_only | 3 | -0.0183 | 0.02 | 33.33% | 16.61% |
+| low_volatility_only | 3 | -0.0387 | -1.54 | 0.00% | -45.68% |
+| reversal_5d_only | 3 | 0.0206 | -0.31 | 66.67% | -1.14% |
+| random_cross_section | 3 | 0.0032 | -0.80 | 66.67% | -13.78% |
+
 ## Interpretation
 
 The signal is not supported out-of-sample in this run. Treat it as rejected until a more robust variant improves IC stability without increasing overfit risk.
 
 The strongest out-of-sample Sharpe is from `reversal_5d_only`, not the agent signal. Treat this as a useful rejection/iteration signal: inspect which factor exposure is carrying the result before adding model complexity.
+
+Walk-forward validation is not yet stable enough for promotion: inspect the weak windows before adding factor complexity.
 
 The train/test split is chronological. Test-period results are the primary evidence because they are less exposed to factor selection bias.
 
@@ -60,5 +78,5 @@ The train/test split is chronological. Test-period results are the primary evide
 
 - Run the same signal on Yahoo Finance data for a real equity universe.
 - Add factor correlation and redundancy analysis before combining signals.
-- Add walk-forward validation over multiple expanding windows.
+- Stress-test promising factors with neutralization and liquidity constraints.
 - Compare this factor against pure momentum, pure low volatility, and reversal baselines.

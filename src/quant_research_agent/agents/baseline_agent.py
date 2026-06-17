@@ -27,6 +27,8 @@ class BaselineAgent:
                 rebalance_days=config.experiment.backtest.rebalance_days,
                 quantile=config.experiment.backtest.quantile,
                 transaction_cost_bps=config.experiment.backtest.transaction_cost_bps,
+                walk_forward_windows=config.experiment.validation.walk_forward.window_count,
+                walk_forward_min_train_fraction=config.experiment.validation.walk_forward.min_train_fraction,
             )
         return baselines
 

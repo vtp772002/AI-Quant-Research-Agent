@@ -30,6 +30,12 @@ def test_research_workflow_produces_metrics_and_report(tmp_path: Path):
                     "quantile": 0.25,
                     "transaction_cost_bps": 1.0,
                 },
+                "validation": {
+                    "walk_forward": {
+                        "window_count": 3,
+                        "min_train_fraction": 0.4,
+                    }
+                },
                 "baselines": [
                     {
                         "name": "momentum_20d_only",
@@ -56,12 +62,17 @@ def test_research_workflow_produces_metrics_and_report(tmp_path: Path):
 
     assert result.backtest.metrics["test"]["observations"] > 0
     assert "sharpe" in result.backtest.metrics["full"]
+    assert len(result.backtest.walk_forward) == 3
+    assert result.backtest.walk_forward[0].metrics["observations"] > 0
     assert set(result.baselines) == {"momentum_20d_only", "random_cross_section"}
     assert result.baselines["momentum_20d_only"].metrics["test"]["observations"] > 0
+    assert len(result.baselines["momentum_20d_only"].walk_forward) == 3
     assert report_path.exists()
     report_text = report_path.read_text()
     assert "AI Quant Research Report" in report_text
     assert "Baseline Comparison" in report_text
+    assert "Walk-Forward Validation" in report_text
+    assert "wf_01" in report_text
     assert "momentum_20d_only" in report_text
     assert experiments_path.exists()
     experiment_rows = pd.read_csv(experiments_path)
@@ -70,3 +81,5 @@ def test_research_workflow_produces_metrics_and_report(tmp_path: Path):
         "momentum_20d_only",
         "random_cross_section",
     }
+    assert {"full_sample", "wf_01", "wf_02", "wf_03"}.issubset(set(experiment_rows["window"]))
+    assert len(experiment_rows) == 12

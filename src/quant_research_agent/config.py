@@ -39,12 +39,24 @@ class BaselineConfig:
 
 
 @dataclass(frozen=True)
+class WalkForwardConfig:
+    window_count: int = 0
+    min_train_fraction: float = 0.4
+
+
+@dataclass(frozen=True)
+class ValidationConfig:
+    walk_forward: WalkForwardConfig
+
+
+@dataclass(frozen=True)
 class ExperimentConfig:
     name: str
     train_fraction: float
     signal: SignalConfig
     backtest: BacktestConfig
     baselines: list[BaselineConfig]
+    validation: ValidationConfig
 
 
 @dataclass(frozen=True)
@@ -70,6 +82,8 @@ def parse_config(raw: dict[str, Any]) -> AppConfig:
     experiment = raw["experiment"]
     signal = experiment["signal"]
     backtest = experiment["backtest"]
+    validation = experiment.get("validation", {})
+    walk_forward = validation.get("walk_forward", {}) or {}
     report = raw["report"]
 
     train_fraction = float(experiment.get("train_fraction", 0.7))
@@ -79,6 +93,14 @@ def parse_config(raw: dict[str, Any]) -> AppConfig:
     quantile = float(backtest.get("quantile", 0.2))
     if not 0.0 < quantile < 0.5:
         raise ValueError("experiment.backtest.quantile must be between 0 and 0.5")
+
+    walk_forward_window_count = int(walk_forward.get("window_count", 0))
+    if walk_forward_window_count < 0:
+        raise ValueError("experiment.validation.walk_forward.window_count must be non-negative")
+
+    walk_forward_min_train_fraction = float(walk_forward.get("min_train_fraction", 0.4))
+    if not 0.1 <= walk_forward_min_train_fraction <= 0.9:
+        raise ValueError("experiment.validation.walk_forward.min_train_fraction must be between 0.1 and 0.9")
 
     return AppConfig(
         data=DataConfig(
@@ -110,6 +132,12 @@ def parse_config(raw: dict[str, Any]) -> AppConfig:
                 )
                 for baseline in experiment.get("baselines", [])
             ],
+            validation=ValidationConfig(
+                walk_forward=WalkForwardConfig(
+                    window_count=walk_forward_window_count,
+                    min_train_fraction=walk_forward_min_train_fraction,
+                )
+            ),
         ),
         report=ReportConfig(
             output_path=Path(report.get("output_path", "reports/sample_research_report.md")),
