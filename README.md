@@ -48,6 +48,7 @@ export AIQRA_API_KEYS="local-viewer-change-me:viewer,local-researcher-change-me:
 python -m quant_research_agent.api
 curl http://127.0.0.1:8000/health
 curl -H "X-API-Key: local-viewer-change-me" "http://127.0.0.1:8000/signals/as-of?config_path=configs/base.yaml&date=2022-12-30"
+curl -H "X-API-Key: local-viewer-change-me" "http://127.0.0.1:8000/reviews/ideas?review_queue=results/ideas/review_queue.json"
 ```
 
 All non-health API routes require `X-API-Key`. Configure keys with
@@ -56,6 +57,17 @@ All non-health API routes require `X-API-Key`. Configure keys with
 permissions, and experiment execution requires at least `researcher`. Request
 logs include sanitized `api_key_id`, `role`, `auth_required`, `auth_result`, and
 `required_role`; raw API keys are never logged.
+
+The review queue API exposes read-only summary and audit endpoints for viewer
+keys:
+
+- `GET /reviews/ideas?review_queue=<path>`
+- `GET /reviews/audit?review_queue=<path>`
+
+Researcher keys can update review state and run approved configs through:
+
+- `POST /reviews/ideas/status`
+- `POST /reviews/approved/run`
 
 Compare generated runs:
 
@@ -228,6 +240,8 @@ The research report includes:
   service, keeping `/health` public and protecting research routes.
 - Authenticated API request log context with sanitized API key ids, roles, and
   auth results.
+- Review queue summary, audit, status-update, and run-approved endpoints behind
+  the internal API role boundary.
 
 ## Validation
 
@@ -248,7 +262,8 @@ python -m quant_research_agent.api
   registry, scheduled batch orchestration, registry export handoff, vendor
   snapshot ingestion, paper-to-alpha template extraction, LLM-facing research
   agent contracts, an internal API, as-of signal generation, and broker-free
-  execution simulation, plus human review gating for generated ideas, but no
+  execution simulation, plus human review gating and review queue API endpoints
+  for generated ideas, but no
   live vendor API integration, broker-grade locate entitlement feed, paper/live
   broker execution, order management, or compliance workflow.
 
@@ -266,6 +281,8 @@ Implemented Level 1 foundations:
 - As-of signal API.
 - Batch run orchestration and run comparison artifacts.
 - API key authentication and role-scoped internal API access.
+- Review queue API endpoints for summaries, audit events, status updates, and
+  approved-idea batch runs.
 - Offline registry export handoff.
 - Vendor snapshot boundary, paper-to-alpha templates, and execution simulation.
 - Research idea generation, critique, memory, paper-to-alpha v2, and alpha-mining
@@ -282,7 +299,6 @@ Deferred until separate stories:
 
 ## Next Steps
 
-- Add review queue and audit API endpoints behind the existing API role boundary.
 - Add a live LLM provider adapter after prompt/versioning, credentials, and
   review requirements are specified.
 - Add reviewed prompt templates and provider-specific adapters after the

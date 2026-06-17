@@ -58,7 +58,7 @@ quant_research_agent.idea_review
   human review queue, append-only review audit ledger, idea approval state, and run gate enforcement
 
 quant_research_agent.main / api
-  app surfaces
+  app surfaces, including role-scoped review queue API orchestration
 ```
 
 ## Default Layering For Future Additions
@@ -156,6 +156,10 @@ the code level even when the storage layer is simple:
 - Commands mutate state and own audit side effects.
 - Queries read state and format for consumers.
 - Shared domain rules live in domain/application, not controllers.
+
+The review queue API follows this split: summary and audit endpoints are
+queries, while status updates and approved-idea runs are commands that delegate
+state changes to `idea_review` and batch execution to `operations`.
 
 ## Observability Contract
 

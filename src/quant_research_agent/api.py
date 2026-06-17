@@ -15,9 +15,17 @@ try:
 except ImportError as exc:  # pragma: no cover - exercised only in minimal installs.
     raise RuntimeError("FastAPI service requires installing the service extra: pip install -e '.[service]'") from exc
 
-from quant_research_agent.api_auth import request_auth_audit, require_role
+from quant_research_agent.api_auth import ApiPrincipal, request_auth_audit, require_role
 from quant_research_agent.config import load_config
 from quant_research_agent.experiment_registry import get_run, list_runs, record_to_dict
+from quant_research_agent.idea_review import (
+    approved_config_paths,
+    mark_configs_ran,
+    review_audit_events,
+    review_summary,
+    update_idea_status,
+)
+from quant_research_agent.operations import batch_result_to_dict, run_research_batch
 from quant_research_agent.signals import generate_signal_as_of, signal_result_to_dict
 from quant_research_agent.workflow import run_configured_workflow
 
@@ -28,6 +36,20 @@ logging.basicConfig(level=os.getenv("AIQRA_LOG_LEVEL", "INFO"))
 
 class RunExperimentRequest(BaseModel):
     config_path: str = "configs/base.yaml"
+
+
+class UpdateIdeaStatusRequest(BaseModel):
+    review_queue: str
+    idea_name: str
+    status: str
+    note: str = ""
+
+
+class RunApprovedIdeasRequest(BaseModel):
+    review_queue: str
+    batch_output_dir: str = "results/idea_batches"
+    comparison_metric: str = "sharpe"
+    limit: int | None = None
 
 
 def create_app() -> FastAPI:
@@ -114,6 +136,58 @@ def create_app() -> FastAPI:
             generate_signal_as_of(config=config, as_of_date=date or config.data.end, config_path=path)
         )
 
+    @app.get("/reviews/ideas")
+    def idea_review_summary(
+        review_queue: str,
+        principal: ApiPrincipal = Depends(require_role("viewer")),
+    ) -> dict[str, object]:
+        _ = principal
+        return _review_payload(lambda: review_summary(Path(review_queue)))
+
+    @app.get("/reviews/audit")
+    def idea_review_audit(
+        review_queue: str,
+        principal: ApiPrincipal = Depends(require_role("viewer")),
+    ) -> dict[str, object]:
+        _ = principal
+        return _review_payload(lambda: {"queue_path": review_queue, "events": review_audit_events(Path(review_queue))})
+
+    @app.post("/reviews/ideas/status")
+    def set_idea_review_status(
+        request: UpdateIdeaStatusRequest,
+        principal: ApiPrincipal = Depends(require_role("researcher")),
+    ) -> dict[str, object]:
+        return _review_payload(
+            lambda: update_idea_status(
+                Path(request.review_queue),
+                idea_name=request.idea_name,
+                status=request.status,
+                note=request.note,
+                actor=f"api:{principal.api_key_id}",
+            )
+        )
+
+    @app.post("/reviews/approved/run")
+    def run_approved_ideas(
+        request: RunApprovedIdeasRequest,
+        principal: ApiPrincipal = Depends(require_role("researcher")),
+    ) -> dict[str, object]:
+        config_paths = _review_payload(lambda: approved_config_paths(Path(request.review_queue)))
+        if not config_paths:
+            raise HTTPException(status_code=400, detail="review queue has no approved ideas to run")
+        try:
+            result = run_research_batch(
+                config_paths=config_paths,
+                output_dir=Path(request.batch_output_dir),
+                comparison_metric=request.comparison_metric,
+                limit=request.limit,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if result.status == "completed":
+            mark_configs_ran(Path(request.review_queue), config_paths, actor=f"api:{principal.api_key_id}")
+        return batch_result_to_dict(result)
+
     return app
 
 
@@ -122,6 +196,17 @@ app = create_app()
 
 def _registry_path(value: str | None = None) -> Path:
     return Path(value or os.getenv("AIQRA_EXPERIMENT_REGISTRY", "results/experiments.sqlite"))
+
+
+def _review_payload(loader):
+    try:
+        return loader()
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="review queue not found") from exc
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 def _request_log_payload(request: Request, request_id: str, duration_ms: float, status_code: int) -> dict[str, object]:

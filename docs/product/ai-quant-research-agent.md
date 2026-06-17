@@ -28,8 +28,8 @@ python -m quant_research_agent.api
 ```
 
 It exposes health, metrics, experiment run, experiment lookup, report lookup,
-and as-of signal endpoints for internal research automation. It is not a public
-investment-advice API and does not place orders.
+as-of signal, and review queue endpoints for internal research automation. It
+is not a public investment-advice API and does not place orders.
 
 The internal API keeps `/health` public for deployment checks. All other routes
 require `X-API-Key`; keys are configured with `AIQRA_API_KEYS` as comma-separated
@@ -38,6 +38,11 @@ reports, and signals. Researcher and operator keys include viewer permissions;
 experiment execution requires at least researcher. Request logs include
 sanitized API key id, role, required role, auth-required flag, and auth result;
 raw API keys are not logged.
+
+Review queue API reads are available to viewer keys through summary and audit
+endpoints. Status updates and approved-idea batch execution require researcher
+or operator keys, and write sanitized API actor ids into the review audit
+ledger.
 
 ## Core Workflow
 
@@ -88,6 +93,8 @@ raw API keys are not logged.
 29. Protect non-health internal API routes with API keys and role-scoped access.
 30. Emit API request logs with sanitized authenticated actor and authorization
     result context.
+31. Expose review queue summary, audit, status-update, and run-approved
+    operations through the role-scoped internal API.
 
 ## Data Contract
 
@@ -269,6 +276,12 @@ The ledger records event id, event type, queue path, idea name, config path,
 source, previous status, next status, actor, note, and timestamp. This gives
 local research reviews a durable operator trail without introducing auth,
 multi-user approvals, or a managed audit database.
+
+The internal API surfaces the same review queue boundary for automation:
+viewer keys can read queue summaries and audit events, while researcher keys
+can change idea status or run approved configs. API-originated review mutations
+record sanitized actor ids such as `api:rese...cret`; raw keys are not written
+to audit or request logs.
 
 Execution simulation converts as-of signal target weights into a broker-free
 order plan with participation gates. It does not route orders, reserve locates,

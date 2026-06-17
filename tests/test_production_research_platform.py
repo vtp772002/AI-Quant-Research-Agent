@@ -6,10 +6,16 @@ from types import SimpleNamespace
 
 from fastapi import HTTPException
 
-from quant_research_agent.api import _request_log_payload, create_app
+from quant_research_agent.api import (
+    RunApprovedIdeasRequest,
+    UpdateIdeaStatusRequest,
+    _request_log_payload,
+    create_app,
+)
 from quant_research_agent.api_auth import clear_auth_cache, parse_api_keys, require_role
 from quant_research_agent.config import parse_config
 from quant_research_agent.experiment_registry import get_run, list_runs, record_run
+from quant_research_agent.research_agents import generate_idea_configs
 from quant_research_agent.signals import generate_signal_as_of, signal_result_to_dict
 
 
@@ -139,6 +145,82 @@ def test_api_route_metadata_protects_non_health_routes():
     assert _route_dependencies(app, "/reports/{run_id}") == 1
     assert _route_dependencies(app, "/signals/latest") == 1
     assert _route_dependencies(app, "/signals/as-of") == 1
+    assert _route_total_dependencies(app, "/reviews/ideas") == 1
+    assert _route_total_dependencies(app, "/reviews/audit") == 1
+    assert _route_total_dependencies(app, "/reviews/ideas/status") == 1
+    assert _route_total_dependencies(app, "/reviews/approved/run") == 1
+
+
+def test_api_exposes_review_queue_summary_status_and_audit(monkeypatch, tmp_path: Path):
+    monkeypatch.setenv("AIQRA_API_KEYS", "viewer-secret:viewer,research-secret:researcher")
+    clear_auth_cache()
+    generate_idea_configs(
+        base_config_path=_base_config(tmp_path),
+        output_dir=tmp_path / "ideas",
+        objective="Review through API",
+        count=1,
+        registry_path=tmp_path / "memory.sqlite",
+    )
+    queue_path = tmp_path / "ideas" / "review_queue.json"
+    app = create_app()
+    viewer = require_role("viewer")(_request(), "viewer-secret")
+    researcher = require_role("researcher")(_request(), "research-secret")
+
+    summary = _endpoint(app, "/reviews/ideas")(review_queue=str(queue_path), principal=viewer)
+    audit_before = _endpoint(app, "/reviews/audit")(review_queue=str(queue_path), principal=viewer)
+    idea_name = summary["records"][0]["idea_name"]
+    update_request = UpdateIdeaStatusRequest(
+        review_queue=str(queue_path),
+        idea_name=idea_name,
+        status="approved",
+        note="Approved through API.",
+    )
+
+    updated = _endpoint(app, "/reviews/ideas/status")(request=update_request, principal=researcher)
+    audit_after = _endpoint(app, "/reviews/audit")(review_queue=str(queue_path), principal=viewer)
+
+    assert summary["counts"]["draft"] == 1
+    assert [event["event_type"] for event in audit_before["events"]] == ["created"]
+    assert updated["records"][0]["status"] == "approved"
+    assert [event["event_type"] for event in audit_after["events"]] == ["created", "status_changed"]
+    assert audit_after["events"][1]["actor"] == "api:rese...cret"
+
+
+def test_api_runs_approved_review_queue_configs(monkeypatch, tmp_path: Path):
+    monkeypatch.setenv("AIQRA_API_KEYS", "research-secret:researcher")
+    clear_auth_cache()
+    generate_idea_configs(
+        base_config_path=_base_config(tmp_path),
+        output_dir=tmp_path / "ideas",
+        objective="Run approved through API",
+        count=1,
+        registry_path=tmp_path / "memory.sqlite",
+    )
+    queue_path = tmp_path / "ideas" / "review_queue.json"
+    app = create_app()
+    researcher = require_role("researcher")(_request(), "research-secret")
+    idea_name = _endpoint(app, "/reviews/ideas")(review_queue=str(queue_path), principal=researcher)["records"][0]["idea_name"]
+    update_request = UpdateIdeaStatusRequest(
+        review_queue=str(queue_path),
+        idea_name=idea_name,
+        status="approved",
+        note="Approved for API run.",
+    )
+    run_request = RunApprovedIdeasRequest(
+        review_queue=str(queue_path),
+        batch_output_dir=str(tmp_path / "approved_batch"),
+        comparison_metric="sharpe",
+        limit=None,
+    )
+
+    _endpoint(app, "/reviews/ideas/status")(request=update_request, principal=researcher)
+    result = _endpoint(app, "/reviews/approved/run")(request=run_request, principal=researcher)
+    audit = _endpoint(app, "/reviews/audit")(review_queue=str(queue_path), principal=researcher)
+
+    assert result["status"] == "completed"
+    assert result["successful_runs"] == 1
+    assert [event["event_type"] for event in audit["events"]] == ["created", "status_changed", "ran"]
+    assert audit["events"][2]["actor"] == "api:rese...cret"
 
 
 def test_api_request_logs_include_sanitized_auth_context(monkeypatch):
@@ -227,8 +309,21 @@ def _route_dependencies(app, path: str) -> int:
     raise AssertionError(f"route not found: {path}")
 
 
+def _route_total_dependencies(app, path: str) -> int:
+    for route in app.router.routes:
+        if getattr(route, "path", None) == path:
+            return len(getattr(route, "dependencies", [])) + len(route.dependant.dependencies)
+    raise AssertionError(f"route not found: {path}")
+
+
 def _config(tmp_path: Path):
     return parse_config(_config_dict(tmp_path), base_dir=tmp_path)
+
+
+def _base_config(tmp_path: Path) -> Path:
+    config_path = tmp_path / "base.yaml"
+    config_path.write_text(_config_yaml(tmp_path), encoding="utf-8")
+    return config_path
 
 
 def _config_dict(tmp_path: Path) -> dict[str, object]:
