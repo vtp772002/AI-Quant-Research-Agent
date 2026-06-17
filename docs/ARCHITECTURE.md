@@ -51,6 +51,9 @@ quant_research_agent.research_agents
 quant_research_agent.llm_provider
   prompt/schema versioning, provider guardrails, and prompt/response transcript artifacts
 
+quant_research_agent.idea_review
+  human review queue, idea approval state, and run gate enforcement
+
 quant_research_agent.main / api
   app surfaces
 ```

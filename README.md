@@ -89,14 +89,21 @@ python -m quant_research_agent.main --generate-ideas --config configs/base.yaml 
 python -m quant_research_agent.main --generate-ideas --config configs/base.yaml --llm-provider fixture --llm-fixture fixtures/ideas.json --ideas-output-dir results/ideas
 python -m quant_research_agent.main --critique-run results/runs/<run_id>/manifest.json
 python -m quant_research_agent.main --mine-alpha --config configs/base.yaml --n 5 --mine-output-dir results/alpha_mining
-python -m quant_research_agent.main --mine-alpha --config configs/base.yaml --n 3 --run-generated --mine-output-dir results/alpha_mining
+python -m quant_research_agent.main --review-ideas --review-queue results/ideas/review_queue.json
+python -m quant_research_agent.main --set-idea-status approved --idea-name <idea_name> --review-queue results/ideas/review_queue.json --review-note "Approved for local validation."
+python -m quant_research_agent.main --run-approved-ideas --review-queue results/ideas/review_queue.json --batch-output-dir results/idea_batches
 ```
 
 The LLM-facing provider boundary supports `deterministic`, `fixture`, and
 guarded external `command` providers. Command providers read prompt JSON from
 stdin and write strict JSON to stdout, and require `--allow-external-llm` or
 `AIQRA_ALLOW_EXTERNAL_LLM=1`. Prompt, response, and transcript artifacts are
-written under the idea output directory for review.
+written under the idea output directory for review. Generated ideas also write
+`review_queue.json`; ideas start as `draft` and must be marked `approved` before
+`--run-approved-ideas` can execute them. One-shot
+`--mine-alpha --run-generated` is blocked by default because it creates a fresh
+draft queue; use `--review-override` only for explicit operator-approved local
+experiments.
 
 Run a local production-like container:
 
@@ -203,6 +210,8 @@ The research report includes:
 - Governed LLM provider boundary with prompt/schema versioning, fixture provider
   tests, guarded external command execution, transcript artifacts, and validator
   enforcement before generated ideas become configs.
+- Human review gate for generated research ideas with draft, approved, rejected,
+  ran, and archived statuses before generated configs can execute.
 
 ## Validation
 
@@ -223,9 +232,9 @@ python -m quant_research_agent.api
   registry, scheduled batch orchestration, registry export handoff, vendor
   snapshot ingestion, paper-to-alpha template extraction, LLM-facing research
   agent contracts, an internal API, as-of signal generation, and broker-free
-  execution simulation, but no live vendor API integration, broker-grade locate
-  entitlement feed, auth, paper/live broker execution, order management, or
-  compliance workflow.
+  execution simulation, plus human review gating for generated ideas, but no
+  live vendor API integration, broker-grade locate entitlement feed, auth,
+  paper/live broker execution, order management, or compliance workflow.
 
 ## Production Readiness Path
 
@@ -243,7 +252,8 @@ Implemented Level 1 foundations:
 - Offline registry export handoff.
 - Vendor snapshot boundary, paper-to-alpha templates, and execution simulation.
 - Research idea generation, critique, memory, paper-to-alpha v2, and alpha-mining
-  orchestration with deterministic fallback.
+  orchestration with deterministic fallback and human approval before generated
+  idea configs run.
 
 Deferred until separate stories:
 
@@ -259,7 +269,7 @@ Deferred until separate stories:
 - Add a live LLM provider adapter after prompt/versioning, credentials, and
   review requirements are specified.
 - Add reviewed prompt templates and provider-specific adapters after the
-  external command boundary has stable transcripts and human review policy.
+  external command boundary has stable transcripts and review queue evidence.
 - Promote registry export handoff into managed Postgres/object-storage deployment.
 - Add direct vendor API and securities-lending integrations after credential,
   entitlement, and provenance contracts are specified.

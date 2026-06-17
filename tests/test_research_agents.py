@@ -7,6 +7,14 @@ import pytest
 import yaml
 
 from quant_research_agent.experiment_registry import record_run
+from quant_research_agent.idea_review import (
+    approved_config_paths,
+    enforce_review_gate,
+    load_review_queue,
+    mark_configs_ran,
+    review_summary,
+    update_idea_status,
+)
 from quant_research_agent.llm_provider import build_research_prompt_payload, run_structured_provider
 from quant_research_agent.research_agents import (
     ExperimentIdea,
@@ -72,6 +80,9 @@ def test_generate_idea_configs_writes_valid_config_variants(tmp_path: Path):
     assert len(ideas) == 2
     assert len(config_paths) == 2
     assert ideas_path.exists()
+    review_queue_path = tmp_path / "ideas" / "review_queue.json"
+    assert review_queue_path.exists()
+    assert review_summary(review_queue_path)["counts"]["draft"] == 2
     for config_path in config_paths:
         config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
         assert config["experiment"]["name"]
@@ -115,8 +126,50 @@ def test_mine_alpha_generates_configs_without_running_batch(tmp_path: Path):
 
     assert result.batch_result is None
     assert result.ideas_path.exists()
+    assert result.review_queue_path.exists()
     assert len(result.config_paths) == 2
     assert all(path.exists() for path in result.config_paths)
+
+
+def test_mine_alpha_requires_human_approval_before_running_generated_configs(tmp_path: Path):
+    with pytest.raises(PermissionError, match="must be approved"):
+        mine_alpha(
+            base_config_path=_base_config(tmp_path),
+            output_dir=tmp_path / "mining",
+            objective="Mine alpha ideas",
+            count=1,
+            registry_path=tmp_path / "memory.sqlite",
+            run_generated=True,
+        )
+
+
+def test_review_queue_tracks_human_approval_and_ran_status(tmp_path: Path):
+    _, config_paths, _ = generate_idea_configs(
+        base_config_path=_base_config(tmp_path),
+        output_dir=tmp_path / "ideas",
+        objective="Generate cost-aware alpha ideas",
+        count=1,
+        registry_path=tmp_path / "empty.sqlite",
+    )
+    queue_path = tmp_path / "ideas" / "review_queue.json"
+
+    payload = load_review_queue(queue_path)
+    idea_name = payload["records"][0]["idea_name"]
+    assert approved_config_paths(queue_path) == []
+
+    update_idea_status(queue_path, idea_name=idea_name, status="approved", note="Human approved.")
+
+    assert approved_config_paths(queue_path) == config_paths
+    assert enforce_review_gate(queue_path, config_paths) == config_paths
+    summary = review_summary(queue_path)
+    assert summary["counts"]["approved"] == 1
+    assert summary["records"][0]["note"] == "Human approved."
+
+    mark_configs_ran(queue_path, config_paths, note="Ran after approval.")
+
+    summary = review_summary(queue_path)
+    assert summary["counts"]["ran"] == 1
+    assert summary["records"][0]["note"] == "Ran after approval."
 
 
 def test_fixture_provider_generates_validated_ideas_and_transcript(tmp_path: Path):
@@ -142,7 +195,7 @@ def test_fixture_provider_generates_validated_ideas_and_transcript(tmp_path: Pat
         encoding="utf-8",
     )
 
-    ideas, config_paths, ideas_path, artifacts = generate_idea_configs_with_provider(
+    ideas, config_paths, ideas_path, review_queue_path, artifacts = generate_idea_configs_with_provider(
         base_config_path=_base_config(tmp_path),
         output_dir=tmp_path / "fixture_ideas",
         objective="Use fixture provider",
@@ -155,6 +208,8 @@ def test_fixture_provider_generates_validated_ideas_and_transcript(tmp_path: Pat
     assert [idea.name for idea in ideas] == ["fixture_momentum_low_risk"]
     assert config_paths[0].exists()
     assert ideas_path.exists()
+    assert review_queue_path.exists()
+    assert review_summary(review_queue_path)["counts"]["draft"] == 1
     assert artifacts is not None
     assert artifacts.prompt_path.exists()
     assert artifacts.response_path.exists()

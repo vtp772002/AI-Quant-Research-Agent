@@ -8,6 +8,12 @@ from quant_research_agent.execution_simulator import (
     execution_simulation_to_dict,
     run_execution_simulation,
 )
+from quant_research_agent.idea_review import (
+    approved_config_paths,
+    mark_configs_ran,
+    review_summary,
+    update_idea_status,
+)
 from quant_research_agent.operations import batch_result_to_dict, run_research_batch
 from quant_research_agent.paper_alpha import template_to_config, write_alpha_template
 from quant_research_agent.registry_export import export_registry_snapshot, registry_export_to_dict
@@ -74,6 +80,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--mine-alpha", action="store_true", help="Generate alpha ideas, write configs, and optionally run them.")
     parser.add_argument("--mine-output-dir", default="results/alpha_mining", help="Output directory for alpha-mining artifacts.")
     parser.add_argument("--run-generated", action="store_true", help="Run generated configs during --mine-alpha.")
+    parser.add_argument("--review-override", action="store_true", help="Allow --mine-alpha --run-generated to run draft ideas without approval.")
+    parser.add_argument("--review-queue", help="Path to an idea review queue JSON.")
+    parser.add_argument("--review-ideas", action="store_true", help="Print idea review queue status.")
+    parser.add_argument("--set-idea-status", choices=["draft", "approved", "rejected", "ran", "archived"], help="Set one idea review status.")
+    parser.add_argument("--idea-name", help="Idea name to update in a review queue.")
+    parser.add_argument("--review-note", default="", help="Human review note for status changes.")
+    parser.add_argument("--run-approved-ideas", action="store_true", help="Run approved configs from a review queue.")
     parser.add_argument("--llm-provider", default="deterministic", choices=["deterministic", "fixture", "command"], help="Research idea provider.")
     parser.add_argument("--llm-fixture", help="JSON fixture response for --llm-provider fixture.")
     parser.add_argument("--llm-command", help="External command for --llm-provider command. Reads prompt JSON from stdin and writes JSON to stdout.")
@@ -81,8 +94,43 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--llm-prompt-version", default="research_idea_v1", help="Prompt/schema version recorded in provider transcripts.")
     args = parser.parse_args(argv)
 
+    if args.review_ideas:
+        if not args.review_queue:
+            raise SystemExit("--review-ideas requires --review-queue")
+        print(json.dumps(review_summary(Path(args.review_queue)), indent=2, sort_keys=True))
+        return 0
+
+    if args.set_idea_status:
+        if not args.review_queue or not args.idea_name:
+            raise SystemExit("--set-idea-status requires --review-queue and --idea-name")
+        payload = update_idea_status(
+            Path(args.review_queue),
+            idea_name=args.idea_name,
+            status=args.set_idea_status,
+            note=args.review_note,
+        )
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0
+
+    if args.run_approved_ideas:
+        if not args.review_queue:
+            raise SystemExit("--run-approved-ideas requires --review-queue")
+        config_paths = approved_config_paths(Path(args.review_queue))
+        if not config_paths:
+            raise SystemExit("review queue has no approved ideas to run")
+        result = run_research_batch(
+            config_paths=config_paths,
+            output_dir=Path(args.batch_output_dir),
+            comparison_metric=args.comparison_metric,
+            limit=args.limit,
+        )
+        if result.status == "completed":
+            mark_configs_ran(Path(args.review_queue), config_paths)
+        print(json.dumps(batch_result_to_dict(result), indent=2, sort_keys=True))
+        return 0 if result.status == "completed" else 1
+
     if args.generate_ideas:
-        ideas, config_paths, ideas_path, provider_artifacts = generate_idea_configs_with_provider(
+        ideas, config_paths, ideas_path, review_queue_path, provider_artifacts = generate_idea_configs_with_provider(
             base_config_path=Path(args.config),
             output_dir=Path(args.ideas_output_dir),
             objective=args.objective,
@@ -98,6 +146,7 @@ def main(argv: list[str] | None = None) -> int:
             json.dumps(
                 {
                     "ideas_path": str(ideas_path),
+                    "review_queue_path": str(review_queue_path),
                     "config_paths": [str(path) for path in config_paths],
                     "idea_count": len(ideas),
                     "provider_artifacts": None
@@ -141,6 +190,7 @@ def main(argv: list[str] | None = None) -> int:
             command=args.llm_command,
             allow_external=args.allow_external_llm,
             prompt_version=args.llm_prompt_version,
+            review_override=args.review_override,
         )
         print(json.dumps(mining_result_to_dict(result), indent=2, sort_keys=True))
         return 0

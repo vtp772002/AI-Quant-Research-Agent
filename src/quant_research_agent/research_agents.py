@@ -12,6 +12,11 @@ import yaml
 from quant_research_agent.config import AppConfig, load_config
 from quant_research_agent.experiment_registry import ExperimentRunRecord, list_runs, record_to_dict
 from quant_research_agent.factors.registry import factor_names
+from quant_research_agent.idea_review import (
+    create_review_queue,
+    enforce_review_gate,
+    mark_configs_ran,
+)
 from quant_research_agent.llm_provider import (
     PROMPT_SCHEMA_VERSION,
     ProviderArtifacts,
@@ -63,6 +68,7 @@ class AlphaMiningResult:
     ideas: list[ExperimentIdea]
     config_paths: list[Path]
     ideas_path: Path
+    review_queue_path: Path
     batch_result: BatchRunResult | None
     provider_artifacts: ProviderArtifacts | None
 
@@ -274,6 +280,12 @@ def generate_idea_configs(
     ideas_path = output_dir / "ideas.json"
     ideas_path.parent.mkdir(parents=True, exist_ok=True)
     ideas_path.write_text(json.dumps([idea_to_dict(idea) for idea in ideas], indent=2, sort_keys=True), encoding="utf-8")
+    create_review_queue(
+        ideas=[idea_to_dict(idea) for idea in ideas],
+        config_paths=config_paths,
+        output_dir=output_dir,
+        source="deterministic",
+    )
     return ideas, config_paths, ideas_path
 
 
@@ -288,7 +300,7 @@ def generate_idea_configs_with_provider(
     command: str | None = None,
     allow_external: bool = False,
     prompt_version: str = PROMPT_SCHEMA_VERSION,
-) -> tuple[list[ExperimentIdea], list[Path], Path, ProviderArtifacts | None]:
+) -> tuple[list[ExperimentIdea], list[Path], Path, Path, ProviderArtifacts | None]:
     base_config = load_config(base_config_path)
     memory = load_research_memory(registry_path)
     provider_artifacts = None
@@ -343,7 +355,13 @@ def generate_idea_configs_with_provider(
         "ideas": [idea_to_dict(idea) for idea in ideas],
     }
     ideas_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
-    return ideas, config_paths, ideas_path, provider_artifacts
+    review_queue_path = create_review_queue(
+        ideas=[idea_to_dict(idea) for idea in ideas],
+        config_paths=config_paths,
+        output_dir=output_dir,
+        source=provider,
+    )
+    return ideas, config_paths, ideas_path, review_queue_path, provider_artifacts
 
 
 def mine_alpha(
@@ -358,8 +376,9 @@ def mine_alpha(
     command: str | None = None,
     allow_external: bool = False,
     prompt_version: str = PROMPT_SCHEMA_VERSION,
+    review_override: bool = False,
 ) -> AlphaMiningResult:
-    ideas, config_paths, ideas_path, provider_artifacts = generate_idea_configs_with_provider(
+    ideas, config_paths, ideas_path, review_queue_path, provider_artifacts = generate_idea_configs_with_provider(
         base_config_path=base_config_path,
         output_dir=output_dir,
         objective=objective,
@@ -373,15 +392,22 @@ def mine_alpha(
     )
     batch_result = None
     if run_generated:
+        enforce_review_gate(review_queue_path, config_paths, override=review_override)
         batch_result = run_research_batch(
             config_paths=config_paths,
             output_dir=output_dir / "batch",
             limit=count,
         )
+        mark_configs_ran(
+            review_queue_path,
+            config_paths,
+            note="Ran generated idea configs with review override." if review_override else "Ran approved idea configs.",
+        )
     return AlphaMiningResult(
         ideas=ideas,
         config_paths=config_paths,
         ideas_path=ideas_path,
+        review_queue_path=review_queue_path,
         batch_result=batch_result,
         provider_artifacts=provider_artifacts,
     )
@@ -443,6 +469,7 @@ def critique_to_dict(critique: ResearchCritique) -> dict[str, object]:
 def mining_result_to_dict(result: AlphaMiningResult) -> dict[str, object]:
     return {
         "ideas_path": str(result.ideas_path),
+        "review_queue_path": str(result.review_queue_path),
         "config_paths": [str(path) for path in result.config_paths],
         "ideas": [idea_to_dict(idea) for idea in result.ideas],
         "batch": None

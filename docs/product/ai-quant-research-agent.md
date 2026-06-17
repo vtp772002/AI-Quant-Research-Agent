@@ -73,6 +73,8 @@ investment-advice API and does not place orders.
     existing runs, and orchestrate iterative alpha-mining batches.
 26. Run idea generation through a governed provider boundary with deterministic,
     fixture, or explicitly allowed command providers and transcript artifacts.
+27. Gate generated idea execution behind a human review queue with draft,
+    approved, rejected, ran, and archived statuses.
 
 ## Data Contract
 
@@ -239,6 +241,15 @@ review of externally generated JSON. `command` providers are guarded by an
 explicit allow flag and environment variable because they can call external
 processes. The platform still rejects invalid provider output before any config
 is written.
+
+Generated idea configs are not execution-ready by default. Idea generation
+writes a `review_queue.json` artifact with one record per config. Records start
+as `draft`; an operator can mark them `approved`, `rejected`, or `archived`.
+Only approved records are eligible for `--run-approved-ideas` or
+other queue-driven execution paths; completed approved runs are marked `ran`.
+One-shot `--mine-alpha --run-generated` creates a fresh draft queue and is
+blocked by default unless `--review-override` is explicitly supplied. The
+override keeps that fact in the review note.
 
 Execution simulation converts as-of signal target weights into a broker-free
 order plan with participation gates. It does not route orders, reserve locates,
