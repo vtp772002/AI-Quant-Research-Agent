@@ -5,6 +5,7 @@ from pathlib import Path
 from fastapi import HTTPException
 
 from quant_research_agent.api import create_app
+from quant_research_agent.api_auth import clear_auth_cache, parse_api_keys, require_role
 from quant_research_agent.config import parse_config
 from quant_research_agent.experiment_registry import get_run, list_runs, record_run
 from quant_research_agent.signals import generate_signal_as_of, signal_result_to_dict
@@ -65,10 +66,108 @@ def test_api_exposes_health_signal_and_missing_run_contract(tmp_path: Path):
         raise AssertionError("missing run should raise HTTPException")
 
 
+def test_api_auth_parser_requires_valid_roles():
+    assert parse_api_keys("view-key:viewer, research-key:researcher, ops-key:operator") == {
+        "view-key": "viewer",
+        "research-key": "researcher",
+        "ops-key": "operator",
+    }
+
+    try:
+        parse_api_keys("bad-key:admin")
+    except ValueError as exc:
+        assert "AIQRA_API_KEYS" in str(exc)
+    else:
+        raise AssertionError("invalid API role should fail closed")
+
+
+def test_api_requires_key_for_non_health_routes(monkeypatch):
+    monkeypatch.delenv("AIQRA_API_KEYS", raising=False)
+    clear_auth_cache()
+    viewer_dependency = require_role("viewer")
+
+    with pytest_http_exception(503, "not configured"):
+        viewer_dependency()
+
+    monkeypatch.setenv("AIQRA_API_KEYS", "viewer-secret:viewer")
+    clear_auth_cache()
+
+    with pytest_http_exception(401, "missing API key"):
+        viewer_dependency()
+    with pytest_http_exception(401, "invalid API key"):
+        viewer_dependency("wrong")
+
+    monkeypatch.setenv("AIQRA_API_KEYS", "broken:admin")
+    clear_auth_cache()
+    with pytest_http_exception(503, "misconfigured"):
+        viewer_dependency("broken")
+
+
+def test_api_roles_scope_read_and_run_access(monkeypatch, tmp_path: Path):
+    monkeypatch.setenv("AIQRA_API_KEYS", "viewer-secret:viewer,research-secret:researcher")
+    clear_auth_cache()
+    config_path = tmp_path / "service.yaml"
+    config_path.write_text(_config_yaml(tmp_path), encoding="utf-8")
+    app = create_app()
+    signal_endpoint = _endpoint(app, "/signals/as-of")
+    run_endpoint = _endpoint(app, "/experiments/run")
+    viewer_dependency = require_role("viewer")
+    researcher_dependency = require_role("researcher")
+
+    assert viewer_dependency("viewer-secret").role == "viewer"
+    with pytest_http_exception(403, "requires researcher role"):
+        researcher_dependency("viewer-secret")
+    assert researcher_dependency("research-secret").role == "researcher"
+
+    signal = signal_endpoint(config_path=str(config_path), date="2020-06-30")
+    run = run_endpoint(type("Request", (), {"config_path": str(config_path)})())
+
+    assert signal["signal_date"] <= "2020-06-30"
+    assert run["experiment"] == "production_slice_signal"
+
+
+def test_api_route_metadata_protects_non_health_routes():
+    app = create_app()
+
+    assert _route_dependencies(app, "/health") == 0
+    assert _route_dependencies(app, "/metrics") == 1
+    assert _route_dependencies(app, "/experiments/run") == 1
+    assert _route_dependencies(app, "/experiments") == 1
+    assert _route_dependencies(app, "/experiments/{run_id}") == 1
+    assert _route_dependencies(app, "/reports/{run_id}") == 1
+    assert _route_dependencies(app, "/signals/latest") == 1
+    assert _route_dependencies(app, "/signals/as-of") == 1
+
+
+class pytest_http_exception:
+    def __init__(self, status_code: int, detail_fragment: str):
+        self.status_code = status_code
+        self.detail_fragment = detail_fragment
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, traceback):
+        if exc_type is None:
+            raise AssertionError("expected HTTPException")
+        if not issubclass(exc_type, HTTPException):
+            return False
+        assert exc.status_code == self.status_code
+        assert self.detail_fragment in exc.detail
+        return True
+
+
 def _endpoint(app, path: str):
     for route in app.router.routes:
         if getattr(route, "path", None) == path:
             return route.endpoint
+    raise AssertionError(f"route not found: {path}")
+
+
+def _route_dependencies(app, path: str) -> int:
+    for route in app.router.routes:
+        if getattr(route, "path", None) == path:
+            return len(getattr(route, "dependencies", []))
     raise AssertionError(f"route not found: {path}")
 
 

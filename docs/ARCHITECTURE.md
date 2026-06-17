@@ -33,6 +33,9 @@ quant_research_agent.agents
 quant_research_agent.workflow
   CLI/API orchestration boundary
 
+quant_research_agent.api_auth
+  API key parsing, role hierarchy, and FastAPI authorization dependencies
+
 quant_research_agent.experiment_registry
   local durable run registry
 

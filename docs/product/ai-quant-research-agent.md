@@ -31,6 +31,12 @@ It exposes health, metrics, experiment run, experiment lookup, report lookup,
 and as-of signal endpoints for internal research automation. It is not a public
 investment-advice API and does not place orders.
 
+The internal API keeps `/health` public for deployment checks. All other routes
+require `X-API-Key`; keys are configured with `AIQRA_API_KEYS` as comma-separated
+`key:viewer|researcher|operator` entries. Viewer keys can read metrics, runs,
+reports, and signals. Researcher and operator keys include viewer permissions;
+experiment execution requires at least researcher.
+
 ## Core Workflow
 
 1. Load OHLCV market data for a configured universe.
@@ -77,6 +83,7 @@ investment-advice API and does not place orders.
     approved, rejected, ran, and archived statuses.
 28. Persist an append-only review audit ledger for generated idea creation,
     status changes, and run marking.
+29. Protect non-health internal API routes with API keys and role-scoped access.
 
 ## Data Contract
 
@@ -288,5 +295,6 @@ risk status. It does not compute forward returns or claim execution feasibility.
   broker-free execution simulation, but these remain research approximations and
   do not replace broker execution data, direct securities-lending feeds, direct
   vendor market data APIs, venue routing analysis, independent alpha review,
-  multiple-hypothesis controls, immutable object storage, auth/authorization, a
-  managed live LLM provider, or a full production execution simulator.
+  multiple-hypothesis controls, immutable object storage, multi-user SaaS
+  authorization, a managed live LLM provider, or a full production execution
+  simulator.

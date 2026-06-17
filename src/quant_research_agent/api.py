@@ -9,16 +9,17 @@ import json
 import logging
 import os
 
+try:
+    from fastapi import Depends, FastAPI, HTTPException, Request
+    from pydantic import BaseModel
+except ImportError as exc:  # pragma: no cover - exercised only in minimal installs.
+    raise RuntimeError("FastAPI service requires installing the service extra: pip install -e '.[service]'") from exc
+
+from quant_research_agent.api_auth import require_role
 from quant_research_agent.config import load_config
 from quant_research_agent.experiment_registry import get_run, list_runs, record_to_dict
 from quant_research_agent.signals import generate_signal_as_of, signal_result_to_dict
 from quant_research_agent.workflow import run_configured_workflow
-
-try:
-    from fastapi import FastAPI, HTTPException, Request
-    from pydantic import BaseModel
-except ImportError as exc:  # pragma: no cover - exercised only in minimal installs.
-    raise RuntimeError("FastAPI service requires installing the service extra: pip install -e '.[service]'") from exc
 
 
 LOGGER = logging.getLogger("quant_research_agent.api")
@@ -67,7 +68,10 @@ def create_app() -> FastAPI:
     def health() -> dict[str, str]:
         return {"status": "ok"}
 
-    @app.get("/metrics")
+    viewer_required = Depends(require_role("viewer"))
+    researcher_required = Depends(require_role("researcher"))
+
+    @app.get("/metrics", dependencies=[viewer_required])
     def metrics(registry_path: str | None = None) -> dict[str, object]:
         runs = list_runs(_registry_path(registry_path), limit=1000)
         return {
@@ -76,24 +80,24 @@ def create_app() -> FastAPI:
             "latest_run_id": runs[0].run_id if runs else None,
         }
 
-    @app.post("/experiments/run")
+    @app.post("/experiments/run", dependencies=[researcher_required])
     def run_experiment(request: RunExperimentRequest) -> dict[str, object]:
         return run_configured_workflow(Path(request.config_path)).payload
 
-    @app.get("/experiments")
+    @app.get("/experiments", dependencies=[viewer_required])
     def experiments(registry_path: str | None = None, limit: int = 20) -> dict[str, object]:
         return {
             "runs": [record_to_dict(record) for record in list_runs(_registry_path(registry_path), limit=limit)]
         }
 
-    @app.get("/experiments/{run_id}")
+    @app.get("/experiments/{run_id}", dependencies=[viewer_required])
     def experiment(run_id: str, registry_path: str | None = None) -> dict[str, object]:
         record = get_run(_registry_path(registry_path), run_id)
         if record is None:
             raise HTTPException(status_code=404, detail=f"run not found: {run_id}")
         return record_to_dict(record)
 
-    @app.get("/reports/{run_id}")
+    @app.get("/reports/{run_id}", dependencies=[viewer_required])
     def report(run_id: str, registry_path: str | None = None) -> dict[str, object]:
         record = get_run(_registry_path(registry_path), run_id)
         if record is None:
@@ -107,7 +111,7 @@ def create_app() -> FastAPI:
             "report_markdown": report_path.read_text(encoding="utf-8"),
         }
 
-    @app.get("/signals/latest")
+    @app.get("/signals/latest", dependencies=[viewer_required])
     def latest_signal(config_path: str = "configs/base.yaml") -> dict[str, object]:
         path = Path(config_path)
         config = load_config(path)
@@ -115,7 +119,7 @@ def create_app() -> FastAPI:
             generate_signal_as_of(config=config, as_of_date=config.data.end, config_path=path)
         )
 
-    @app.get("/signals/as-of")
+    @app.get("/signals/as-of", dependencies=[viewer_required])
     def signal_as_of(config_path: str = "configs/base.yaml", date: str | None = None) -> dict[str, object]:
         path = Path(config_path)
         config = load_config(path)

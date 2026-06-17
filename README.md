@@ -44,10 +44,16 @@ python -m src.main --config configs/base.yaml
 Run the internal research API:
 
 ```bash
+export AIQRA_API_KEYS="local-viewer-change-me:viewer,local-researcher-change-me:researcher"
 python -m quant_research_agent.api
 curl http://127.0.0.1:8000/health
-curl "http://127.0.0.1:8000/signals/as-of?config_path=configs/base.yaml&date=2022-12-30"
+curl -H "X-API-Key: local-viewer-change-me" "http://127.0.0.1:8000/signals/as-of?config_path=configs/base.yaml&date=2022-12-30"
 ```
+
+All non-health API routes require `X-API-Key`. Configure keys with
+`AIQRA_API_KEYS` as comma-separated `key:role` entries. Roles are `viewer`,
+`researcher`, and `operator`; `researcher` and `operator` include viewer
+permissions, and experiment execution requires at least `researcher`.
 
 Compare generated runs:
 
@@ -216,6 +222,8 @@ The research report includes:
   ran, and archived statuses before generated configs can execute.
 - Append-only review audit ledger for generated idea creation, approval,
   rejection, archival, and run marking.
+- API key authentication and role-scoped access for the internal FastAPI
+  service, keeping `/health` public and protecting research routes.
 
 ## Validation
 
@@ -237,8 +245,8 @@ python -m quant_research_agent.api
   snapshot ingestion, paper-to-alpha template extraction, LLM-facing research
   agent contracts, an internal API, as-of signal generation, and broker-free
   execution simulation, plus human review gating for generated ideas, but no
-  live vendor API integration, broker-grade locate entitlement feed, auth,
-  paper/live broker execution, order management, or compliance workflow.
+  live vendor API integration, broker-grade locate entitlement feed, paper/live
+  broker execution, order management, or compliance workflow.
 
 ## Production Readiness Path
 
@@ -253,6 +261,7 @@ Implemented Level 1 foundations:
 - Queryable experiment registry.
 - As-of signal API.
 - Batch run orchestration and run comparison artifacts.
+- API key authentication and role-scoped internal API access.
 - Offline registry export handoff.
 - Vendor snapshot boundary, paper-to-alpha templates, and execution simulation.
 - Research idea generation, critique, memory, paper-to-alpha v2, and alpha-mining
@@ -263,13 +272,13 @@ Deferred until separate stories:
 
 - Managed Postgres/object-storage registry with migrations and retention policy.
 - Queue-backed scheduler/worker orchestration beyond the provided daily-run script.
-- Auth, authorization, and multi-user SaaS controls.
+- Multi-user SaaS controls beyond API-key roles.
 - Live commercial data vendor API integration with credentials and rate-limit handling.
 - Paper trading, broker integration, hard risk gates, reconciliation, and kill switch controls.
 
 ## Next Steps
 
-- Add auth and role-scoped access for the internal API.
+- Add request audit logs with authenticated API actor ids.
 - Add a live LLM provider adapter after prompt/versioning, credentials, and
   review requirements are specified.
 - Add reviewed prompt templates and provider-specific adapters after the
