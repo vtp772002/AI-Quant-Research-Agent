@@ -1,10 +1,8 @@
 # Architecture
 
-No application stack is selected yet.
-
-No application code exists yet. This document defines generic architecture
-questions and boundary rules that future implementation should adapt after a
-user-provided spec and stack decision exist.
+The current application stack is Python, pandas, a CLI surface, and an internal
+FastAPI service surface. The first durable experiment registry is SQLite. The
+repository remains a research platform, not a trading execution system.
 
 ## Discovery Before Shape
 
@@ -20,7 +18,32 @@ Before proposing implementation shape, identify:
 Record stack choices in `docs/decisions/` when they meaningfully constrain
 future work.
 
-## Default Layering
+## Current Layering
+
+```text
+quant_research_agent.config
+  parse YAML and environment-shaped boundaries
+
+quant_research_agent.data / factors / backtest
+  domain and computation
+
+quant_research_agent.agents
+  application workflow components
+
+quant_research_agent.workflow
+  CLI/API orchestration boundary
+
+quant_research_agent.experiment_registry
+  local durable run registry
+
+quant_research_agent.signals
+  as-of signal generation boundary
+
+quant_research_agent.main / api
+  app surfaces
+```
+
+## Default Layering For Future Additions
 
 ```text
 domain

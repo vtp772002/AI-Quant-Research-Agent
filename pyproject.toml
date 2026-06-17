@@ -16,12 +16,19 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+service = [
+  "fastapi>=0.110",
+  "uvicorn>=0.27",
+]
 dev = [
   "pytest>=8.0",
+  "fastapi>=0.110",
+  "uvicorn>=0.27",
 ]
 
 [project.scripts]
 ai-quant-research-agent = "quant_research_agent.main:main"
+ai-quant-research-api = "quant_research_agent.api:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

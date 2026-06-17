@@ -21,6 +21,16 @@ suggested it:
 python -m src.main --config configs/base.yaml
 ```
 
+The second product surface is an internal FastAPI service:
+
+```bash
+python -m quant_research_agent.api
+```
+
+It exposes health, metrics, experiment run, experiment lookup, report lookup,
+and as-of signal endpoints for internal research automation. It is not a public
+investment-advice API and does not place orders.
+
 ## Core Workflow
 
 1. Load OHLCV market data for a configured universe.
@@ -46,7 +56,11 @@ python -m src.main --config configs/base.yaml
 15. Calculate IC, Sharpe ratio, max drawdown, turnover, costs, borrow drag, and
    total return.
 16. Write a Markdown research report, append experiment metrics, and emit a
-   reproducibility pack manifest for the run.
+    reproducibility pack manifest for the run.
+17. Persist key run metadata and metrics into a queryable local SQLite
+    experiment registry.
+18. Generate as-of signal snapshots for a requested date using only data
+    available on or before that date.
 
 ## Data Contract
 
@@ -165,6 +179,18 @@ fingerprints, locate-history hash when configured, report hash, experiment CSV
 hash, and primary metrics. The Markdown report includes a `Run
 Reproducibility` section that points to the manifest and frozen config.
 
+Every CLI run also writes a queryable registry row to
+`results/experiments.sqlite` by default. The registry stores run id, experiment
+name, generated timestamp, config hash, source metadata, code metadata,
+artifact paths, and key train/test metrics. It is the Level 1 local system of
+record for internal research runs; a Postgres-backed registry is a later
+deployment story.
+
+As-of signal generation truncates loaded market data to the requested date,
+computes configured factors and signal scores, and emits symbol-level signal
+score, rank, target weight, reason, data timestamp, model/config version, and
+risk status. It does not compute forward returns or claim execution feasibility.
+
 ## Limitations
 
 - Synthetic data validates mechanics, not investment merit.
@@ -177,8 +203,9 @@ Reproducibility` section that points to the manifest and frozen config.
 - v1 includes liquidity-sensitive transaction costs, borrow fees, shortability
   constraints, robustness diagnostics, and a CSV point-in-time universe adapter,
   plus capacity diagnostics and validated CSV snapshot and locate-history
-  adapters, plus reproducibility manifests, but these remain research
+  adapters, plus reproducibility manifests, a local experiment registry, an
+  internal API, and as-of signal snapshots, but these remain research
   approximations and do not replace broker execution data, direct
   securities-lending feeds, direct vendor market data APIs, venue routing
   analysis, independent alpha review, multiple-hypothesis controls, immutable
-  object storage, or a full production execution simulator.
+  object storage, auth/authorization, or a full production execution simulator.

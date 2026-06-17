@@ -130,6 +130,7 @@ class ExperimentConfig:
 class ReportConfig:
     output_path: Path
     experiments_path: Path
+    registry_path: Path
 
 
 @dataclass(frozen=True)
@@ -349,6 +350,7 @@ def parse_config(raw: dict[str, Any], base_dir: str | Path | None = None) -> App
         report=ReportConfig(
             output_path=Path(report.get("output_path", "reports/sample_research_report.md")),
             experiments_path=Path(report.get("experiments_path", "results/experiments.csv")),
+            registry_path=Path(report.get("registry_path", "results/experiments.sqlite")),
         ),
     )
 

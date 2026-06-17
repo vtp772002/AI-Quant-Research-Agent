@@ -22,6 +22,8 @@ statistical evidence a quant researcher needs to judge a signal?
   signal, compare it with baselines, evaluate the experiment, and write a
   report.
 - `backtest`: run a dollar-neutral top/bottom quantile long-short portfolio.
+- `api`: expose an internal FastAPI service for health checks, run execution,
+  run lookup, report lookup, and as-of signal generation.
 - `reports` and `results`: store generated research artifacts.
 
 ## Quick Start
@@ -37,6 +39,20 @@ The spec-compatible entrypoint also works:
 
 ```bash
 python -m src.main --config configs/base.yaml
+```
+
+Run the internal research API:
+
+```bash
+python -m quant_research_agent.api
+curl http://127.0.0.1:8000/health
+curl "http://127.0.0.1:8000/signals/as-of?config_path=configs/base.yaml&date=2022-12-30"
+```
+
+Run a local production-like container:
+
+```bash
+docker compose up --build api
 ```
 
 ## Default Experiment
@@ -117,12 +133,17 @@ The research report includes:
   checks, row counts, symbol sets, date ranges, and institutional data flags.
 - Per-run reproducibility packs with run id, config hash, code version, data
   fingerprints, artifact hashes, frozen config, and manifest JSON.
+- Queryable SQLite experiment registry at `results/experiments.sqlite` by
+  default, populated from reproducibility manifests.
+- As-of signal generation for daily research automation without using future
+  returns.
 
 ## Validation
 
 ```bash
 python -m pytest
 python -m quant_research_agent.main --config configs/base.yaml --json
+python -m quant_research_agent.api
 ```
 
 ## Limitations
@@ -132,8 +153,32 @@ python -m quant_research_agent.main --config configs/base.yaml --json
   reports flag this explicitly in the data integrity section.
 - v1 has diagnostic neutralization, liquidity stress tests, robustness checks,
   capacity diagnostics, a liquidity-sensitive transaction cost model, borrow
-  constraints, and a CSV locate-history adapter, but no direct vendor API
-  integration, broker-grade locate entitlement feed, or execution simulator.
+  constraints, a CSV locate-history adapter, a local experiment registry, an
+  internal API, and as-of signal generation, but no direct vendor API
+  integration, broker-grade locate entitlement feed, auth, paper/live broker
+  execution, order management, or compliance workflow.
+
+## Production Readiness Path
+
+This repo is now aimed at Level 1 first: an internal production research
+platform. It is not a live trading system.
+
+Implemented Level 1 foundations:
+
+- Dockerfile and `docker-compose.yml` for the internal API.
+- `.env.example` with non-secret local defaults.
+- GitHub Actions test workflow.
+- Queryable experiment registry.
+- As-of signal API.
+
+Deferred until separate stories:
+
+- Postgres/object-storage backed registry and artifacts.
+- Scheduler/worker orchestration beyond the provided daily-run script.
+- Auth, authorization, and multi-user SaaS controls.
+- Commercial data vendor ingestion.
+- Paper trading, broker integration, hard risk gates, reconciliation, and kill
+  switch controls.
 
 ## Next Steps
 

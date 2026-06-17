@@ -1,0 +1,47 @@
+services:
+  api:
+    build: .
+    command: uvicorn quant_research_agent.api:app --host 0.0.0.0 --port 8000
+    env_file:
+      - .env.example
+    ports:
+      - "${AIQRA_PORT:-8000}:8000"
+    volumes:
+      - ./configs:/app/configs:ro
+      - ./reports:/app/reports
+      - ./results:/app/results
+      - ./data:/app/data:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health').read()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  scheduler:
+    build: .
+    profiles: ["scheduler"]
+    command: ./scripts/run_daily_research.sh
+    env_file:
+      - .env.example
+    volumes:
+      - ./configs:/app/configs:ro
+      - ./reports:/app/reports
+      - ./results:/app/results
+      - ./data:/app/data:ro
+
+  redis:
+    image: redis:7-alpine
+    profiles: ["future-orchestration"]
+
+  postgres:
+    image: postgres:16-alpine
+    profiles: ["future-orchestration"]
+    environment:
+      POSTGRES_DB: ai_quant_research
+      POSTGRES_USER: ai_quant_research
+      POSTGRES_PASSWORD: ai_quant_research_dev_only
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
