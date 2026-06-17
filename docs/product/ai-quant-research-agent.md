@@ -69,6 +69,8 @@ investment-advice API and does not place orders.
 22. Load vendor snapshot drops through the validated OHLCV snapshot boundary.
 23. Extract draft alpha experiment templates from paper or blog text.
 24. Simulate as-of execution plans without routing orders or contacting brokers.
+25. Generate validated research idea configs from prior run memory, critique
+    existing runs, and orchestrate iterative alpha-mining batches.
 
 ## Data Contract
 
@@ -219,6 +221,16 @@ Paper-to-alpha extraction converts paper/blog text into a draft experiment
 template using simple heuristics. The generated hypothesis, factors, and holding
 period must be reviewed before they become investment research.
 
+The LLM-facing research loop uses strict `ExperimentIdea` payloads: name,
+hypothesis, positive factors, negative factors, holding period, quantile,
+rationale, confidence, and warnings. The current implementation includes a
+deterministic provider so CI and local validation do not require API keys; a
+future live LLM provider must satisfy the same validator and credential boundary.
+Research memory reads prior registry rows, idea generation writes config
+variants, the critic explains weak or promising runs from manifest metrics, and
+alpha mining can optionally run generated configs through the existing batch
+orchestrator.
+
 Execution simulation converts as-of signal target weights into a broker-free
 order plan with participation gates. It does not route orders, reserve locates,
 send broker instructions, reconcile fills, or implement a kill switch.
@@ -242,9 +254,11 @@ risk status. It does not compute forward returns or claim execution feasibility.
   plus capacity diagnostics and validated CSV snapshot and locate-history
   adapters, plus reproducibility manifests, run comparison, a local experiment
   registry, scheduled batch orchestration, registry export handoff, vendor
-  snapshot ingestion, paper-to-alpha template extraction, an internal API,
-  as-of signal snapshots, and broker-free execution simulation, but these remain
-  research approximations and do not replace broker execution data, direct
-  securities-lending feeds, direct vendor market data APIs, venue routing
+  snapshot ingestion, paper-to-alpha template extraction, LLM-facing research
+  idea generation, run critique, research memory, iterative alpha mining, an
+  internal API, as-of signal snapshots, and broker-free execution simulation, but
+  these remain research approximations and do not replace broker execution data,
+  direct securities-lending feeds, direct vendor market data APIs, venue routing
   analysis, independent alpha review, multiple-hypothesis controls, immutable
-  object storage, auth/authorization, or a full production execution simulator.
+  object storage, auth/authorization, a live LLM provider, or a full production
+  execution simulator.

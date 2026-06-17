@@ -73,12 +73,22 @@ Extract a draft experiment template from paper or blog text:
 
 ```bash
 python -m quant_research_agent.main --paper-to-alpha papers/example.md --template-output results/paper_alpha_template.yaml
+python -m quant_research_agent.main --paper-to-alpha-v2 papers/example.md --template-output results/paper_alpha_payload.json
 ```
 
 Simulate an as-of execution plan without placing trades:
 
 ```bash
 python -m quant_research_agent.main --simulate-execution --config configs/base.yaml --as-of-date 2022-12-30 --execution-output results/execution_simulation.json
+```
+
+Generate validated research ideas from prior run memory:
+
+```bash
+python -m quant_research_agent.main --generate-ideas --config configs/base.yaml --n 10 --ideas-output-dir results/ideas
+python -m quant_research_agent.main --critique-run results/runs/<run_id>/manifest.json
+python -m quant_research_agent.main --mine-alpha --config configs/base.yaml --n 5 --mine-output-dir results/alpha_mining
+python -m quant_research_agent.main --mine-alpha --config configs/base.yaml --n 3 --run-generated --mine-output-dir results/alpha_mining
 ```
 
 Run a local production-like container:
@@ -180,6 +190,9 @@ The research report includes:
 - Heuristic paper-to-alpha extraction into draft experiment templates.
 - Broker-free execution simulation that applies participation gates without
   routing, reserving locates, or placing orders.
+- LLM-facing research agent contracts with deterministic fallback for idea
+  generation, strict factor validation, run critique, memory-aware config
+  generation, paper-to-alpha v2 payloads, and iterative alpha-mining orchestration.
 
 ## Validation
 
@@ -198,10 +211,11 @@ python -m quant_research_agent.api
   capacity diagnostics, a liquidity-sensitive transaction cost model, borrow
   constraints, a CSV locate-history adapter, run comparison, a local experiment
   registry, scheduled batch orchestration, registry export handoff, vendor
-  snapshot ingestion, paper-to-alpha template extraction, an internal API,
-  as-of signal generation, and broker-free execution simulation, but no live
-  vendor API integration, broker-grade locate entitlement feed, auth, paper/live
-  broker execution, order management, or compliance workflow.
+  snapshot ingestion, paper-to-alpha template extraction, LLM-facing research
+  agent contracts, an internal API, as-of signal generation, and broker-free
+  execution simulation, but no live vendor API integration, broker-grade locate
+  entitlement feed, auth, paper/live broker execution, order management, or
+  compliance workflow.
 
 ## Production Readiness Path
 
@@ -218,6 +232,8 @@ Implemented Level 1 foundations:
 - Batch run orchestration and run comparison artifacts.
 - Offline registry export handoff.
 - Vendor snapshot boundary, paper-to-alpha templates, and execution simulation.
+- Research idea generation, critique, memory, paper-to-alpha v2, and alpha-mining
+  orchestration with deterministic fallback.
 
 Deferred until separate stories:
 
@@ -230,6 +246,8 @@ Deferred until separate stories:
 ## Next Steps
 
 - Add auth and role-scoped access for the internal API.
+- Add a live LLM provider adapter after prompt/versioning, credentials, and
+  review requirements are specified.
 - Promote registry export handoff into managed Postgres/object-storage deployment.
 - Add direct vendor API and securities-lending integrations after credential,
   entitlement, and provenance contracts are specified.

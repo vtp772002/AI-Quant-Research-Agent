@@ -11,6 +11,14 @@ from quant_research_agent.execution_simulator import (
 from quant_research_agent.operations import batch_result_to_dict, run_research_batch
 from quant_research_agent.paper_alpha import template_to_config, write_alpha_template
 from quant_research_agent.registry_export import export_registry_snapshot, registry_export_to_dict
+from quant_research_agent.research_agents import (
+    critique_run_manifest,
+    critique_to_dict,
+    generate_idea_configs,
+    mining_result_to_dict,
+    mine_alpha,
+    paper_to_alpha_v2,
+)
 from quant_research_agent.run_comparison import (
     compare_run_manifests,
     comparison_to_dict,
@@ -56,7 +64,63 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--as-of-date", help="As-of date for signal generation or execution simulation.")
     parser.add_argument("--execution-output", help="Optional JSON output path for execution simulation.")
     parser.add_argument("--max-participation", type=float, help="Override simulated max trade participation.")
+    parser.add_argument("--generate-ideas", action="store_true", help="Generate validated research idea configs from prior run memory.")
+    parser.add_argument("--ideas-output-dir", default="results/ideas", help="Output directory for generated ideas/configs.")
+    parser.add_argument("--objective", default="Find robust medium-frequency equity alpha.", help="Research objective for idea generation.")
+    parser.add_argument("--n", type=int, default=5, help="Number of research ideas to generate.")
+    parser.add_argument("--critique-run", help="Critique one reproducibility manifest and propose a follow-up experiment.")
+    parser.add_argument("--paper-to-alpha-v2", help="Extract a validated paper-to-alpha idea payload from a paper/blog text file.")
+    parser.add_argument("--mine-alpha", action="store_true", help="Generate alpha ideas, write configs, and optionally run them.")
+    parser.add_argument("--mine-output-dir", default="results/alpha_mining", help="Output directory for alpha-mining artifacts.")
+    parser.add_argument("--run-generated", action="store_true", help="Run generated configs during --mine-alpha.")
     args = parser.parse_args(argv)
+
+    if args.generate_ideas:
+        ideas, config_paths, ideas_path = generate_idea_configs(
+            base_config_path=Path(args.config),
+            output_dir=Path(args.ideas_output_dir),
+            objective=args.objective,
+            count=args.n,
+            registry_path=Path(args.registry_path),
+        )
+        print(
+            json.dumps(
+                {
+                    "ideas_path": str(ideas_path),
+                    "config_paths": [str(path) for path in config_paths],
+                    "idea_count": len(ideas),
+                },
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 0
+
+    if args.critique_run:
+        print(json.dumps(critique_to_dict(critique_run_manifest(Path(args.critique_run))), indent=2, sort_keys=True))
+        return 0
+
+    if args.paper_to_alpha_v2:
+        payload = paper_to_alpha_v2(Path(args.paper_to_alpha_v2).read_text(encoding="utf-8"), name=Path(args.paper_to_alpha_v2).stem)
+        if args.template_output:
+            output_path = Path(args.template_output)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+            payload["output_path"] = str(output_path)
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0
+
+    if args.mine_alpha:
+        result = mine_alpha(
+            base_config_path=Path(args.config),
+            output_dir=Path(args.mine_output_dir),
+            objective=args.objective,
+            count=args.n,
+            registry_path=Path(args.registry_path),
+            run_generated=args.run_generated,
+        )
+        print(json.dumps(mining_result_to_dict(result), indent=2, sort_keys=True))
+        return 0
 
     if args.run_batch:
         result = run_research_batch(

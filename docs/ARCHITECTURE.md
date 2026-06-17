@@ -45,6 +45,9 @@ quant_research_agent.operations / registry_export
 quant_research_agent.paper_alpha / execution_simulator
   research-template extraction and broker-free execution feasibility modeling
 
+quant_research_agent.research_agents
+  LLM-facing idea schema, strict validation, memory, critique, and alpha-mining orchestration
+
 quant_research_agent.main / api
   app surfaces
 ```
