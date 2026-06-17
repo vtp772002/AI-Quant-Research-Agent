@@ -253,6 +253,150 @@ def test_command_provider_requires_explicit_external_allowance(tmp_path: Path):
         )
 
 
+def test_openai_provider_requires_explicit_external_allowance(monkeypatch, tmp_path: Path):
+    monkeypatch.setenv("AIQRA_OPENAI_API_KEY", "sk-test-secret")
+    monkeypatch.setenv("AIQRA_OPENAI_MODEL", "test-model")
+    prompt = build_research_prompt_payload(
+        objective="guard live provider",
+        count=1,
+        factor_names=["momentum_20d"],
+        memory={"run_count": 0},
+        base_experiment={"name": "base"},
+    )
+
+    with pytest.raises(PermissionError, match="provider=openai requires --allow-external-llm"):
+        run_structured_provider(
+            provider="openai",
+            prompt_payload=prompt,
+            transcript_dir=tmp_path / "transcripts",
+            allow_external=False,
+        )
+
+
+def test_openai_provider_uses_responses_payload_and_sanitized_artifacts(monkeypatch, tmp_path: Path):
+    captured: dict[str, object] = {}
+
+    def fake_post_json(url, *, headers, payload, timeout_seconds):
+        captured["url"] = url
+        captured["headers"] = headers
+        captured["payload"] = payload
+        captured["timeout_seconds"] = timeout_seconds
+        return {
+            "id": "resp_test_123",
+            "status": "completed",
+            "model": "test-model",
+            "usage": {"input_tokens": 10, "output_tokens": 20, "total_tokens": 30},
+            "output": [
+                {
+                    "type": "message",
+                    "content": [
+                        {
+                            "type": "output_text",
+                            "text": json.dumps(
+                                {
+                                    "ideas": [
+                                        {
+                                            "name": "openai_momentum_low_risk",
+                                            "hypothesis": "Live provider output should validate.",
+                                            "positive_factors": ["momentum_20d"],
+                                            "negative_factors": ["volatility_20d"],
+                                            "holding_period": 5,
+                                            "quantile": 0.2,
+                                            "rationale": "Fake OpenAI response for validation.",
+                                            "confidence": 0.8,
+                                            "warnings": ["review before running"],
+                                        }
+                                    ]
+                                }
+                            ),
+                        }
+                    ],
+                }
+            ],
+        }
+
+    monkeypatch.setenv("AIQRA_OPENAI_API_KEY", "sk-test-secret")
+    monkeypatch.setenv("AIQRA_OPENAI_MODEL", "test-model")
+    monkeypatch.setattr("quant_research_agent.llm_provider._post_json", fake_post_json)
+    prompt = build_research_prompt_payload(
+        objective="live provider test",
+        count=1,
+        factor_names=["momentum_20d", "volatility_20d"],
+        memory={"run_count": 0},
+        base_experiment={"name": "base"},
+    )
+
+    ideas, artifacts = run_structured_provider(
+        provider="openai",
+        prompt_payload=prompt,
+        transcript_dir=tmp_path / "transcripts",
+        allow_external=True,
+        api_url="https://api.openai.test/v1/responses",
+        timeout_seconds=3.5,
+    )
+
+    transcript = json.loads(artifacts.transcript_path.read_text(encoding="utf-8"))
+    response = json.loads(artifacts.response_path.read_text(encoding="utf-8"))
+    rendered_artifacts = artifacts.response_path.read_text(encoding="utf-8") + artifacts.transcript_path.read_text(encoding="utf-8")
+
+    assert ideas[0]["name"] == "openai_momentum_low_risk"
+    assert captured["url"] == "https://api.openai.test/v1/responses"
+    assert captured["timeout_seconds"] == 3.5
+    assert captured["headers"]["Authorization"] == "Bearer sk-test-secret"
+    assert captured["payload"]["model"] == "test-model"
+    assert response["provider_metadata"]["response_id"] == "resp_test_123"
+    assert transcript["response_metadata"]["provider"] == "openai"
+    assert "sk-test-secret" not in rendered_artifacts
+
+
+def test_openai_provider_generates_validated_ideas_and_review_queue(monkeypatch, tmp_path: Path):
+    def fake_post_json(url, *, headers, payload, timeout_seconds):
+        _ = (url, headers, payload, timeout_seconds)
+        return {
+            "id": "resp_test_456",
+            "status": "completed",
+            "output_text": json.dumps(
+                {
+                    "ideas": [
+                        {
+                            "name": "openai_validated_idea",
+                            "hypothesis": "OpenAI provider output passes the existing idea validator.",
+                            "positive_factors": ["momentum_20d"],
+                            "negative_factors": ["volatility_20d"],
+                            "holding_period": 5,
+                            "quantile": 0.2,
+                            "rationale": "Fake live response.",
+                            "confidence": 0.82,
+                            "warnings": ["review before running"],
+                        }
+                    ]
+                }
+            ),
+        }
+
+    monkeypatch.setenv("AIQRA_OPENAI_API_KEY", "sk-test-secret")
+    monkeypatch.setattr("quant_research_agent.llm_provider._post_json", fake_post_json)
+
+    ideas, config_paths, ideas_path, review_queue_path, artifacts = generate_idea_configs_with_provider(
+        base_config_path=_base_config(tmp_path),
+        output_dir=tmp_path / "openai_ideas",
+        objective="Use live provider",
+        count=1,
+        registry_path=tmp_path / "memory.sqlite",
+        provider="openai",
+        allow_external=True,
+        model="test-model",
+    )
+
+    assert [idea.name for idea in ideas] == ["openai_validated_idea"]
+    assert config_paths[0].exists()
+    assert ideas_path.exists()
+    assert review_summary(review_queue_path)["counts"]["draft"] == 1
+    assert artifacts is not None
+    assert artifacts.provider == "openai"
+    assert "sk-test-secret" not in ideas_path.read_text(encoding="utf-8")
+
+
 def _base_config(tmp_path: Path) -> Path:
     config_path = tmp_path / "base.yaml"
     config_path.write_text(

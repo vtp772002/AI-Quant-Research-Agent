@@ -107,6 +107,7 @@ Generate validated research ideas from prior run memory:
 ```bash
 python -m quant_research_agent.main --generate-ideas --config configs/base.yaml --n 10 --ideas-output-dir results/ideas
 python -m quant_research_agent.main --generate-ideas --config configs/base.yaml --llm-provider fixture --llm-fixture fixtures/ideas.json --ideas-output-dir results/ideas
+AIQRA_OPENAI_API_KEY="..." AIQRA_OPENAI_MODEL="<model>" python -m quant_research_agent.main --generate-ideas --config configs/base.yaml --llm-provider openai --allow-external-llm --ideas-output-dir results/live_ideas
 python -m quant_research_agent.main --critique-run results/runs/<run_id>/manifest.json
 python -m quant_research_agent.main --mine-alpha --config configs/base.yaml --n 5 --mine-output-dir results/alpha_mining
 python -m quant_research_agent.main --review-ideas --review-queue results/ideas/review_queue.json
@@ -115,11 +116,14 @@ python -m quant_research_agent.main --review-audit --review-queue results/ideas/
 python -m quant_research_agent.main --run-approved-ideas --review-queue results/ideas/review_queue.json --batch-output-dir results/idea_batches --review-actor batch-runner
 ```
 
-The LLM-facing provider boundary supports `deterministic`, `fixture`, and
-guarded external `command` providers. Command providers read prompt JSON from
-stdin and write strict JSON to stdout, and require `--allow-external-llm` or
-`AIQRA_ALLOW_EXTERNAL_LLM=1`. Prompt, response, and transcript artifacts are
-written under the idea output directory for review. Generated ideas also write
+The LLM-facing provider boundary supports `deterministic`, `fixture`, guarded
+external `command`, and opt-in live `openai` providers. Command and OpenAI
+providers require `--allow-external-llm` or `AIQRA_ALLOW_EXTERNAL_LLM=1`.
+The OpenAI provider reads credentials from `AIQRA_OPENAI_API_KEY` or
+`OPENAI_API_KEY`, requires an explicit model via `--llm-model` or
+`AIQRA_OPENAI_MODEL`, calls the Responses API, and never writes raw API keys to
+artifacts. Prompt, response, and transcript artifacts are written under the
+idea output directory for review. Generated ideas also write
 `review_queue.json`; ideas start as `draft` and must be marked `approved` before
 `--run-approved-ideas` can execute them. One-shot
 `--mine-alpha --run-generated` is blocked by default because it creates a fresh
@@ -232,6 +236,9 @@ The research report includes:
 - Governed LLM provider boundary with prompt/schema versioning, fixture provider
   tests, guarded external command execution, transcript artifacts, and validator
   enforcement before generated ideas become configs.
+- Opt-in live OpenAI provider adapter for idea generation with explicit
+  external-call allowance, environment-managed credentials, transcript
+  metadata, and strict review gating.
 - Human review gate for generated research ideas with draft, approved, rejected,
   ran, and archived statuses before generated configs can execute.
 - Append-only review audit ledger for generated idea creation, approval,
@@ -261,9 +268,9 @@ python -m quant_research_agent.api
   constraints, a CSV locate-history adapter, run comparison, a local experiment
   registry, scheduled batch orchestration, registry export handoff, vendor
   snapshot ingestion, paper-to-alpha template extraction, LLM-facing research
-  agent contracts, an internal API, as-of signal generation, and broker-free
-  execution simulation, plus human review gating and review queue API endpoints
-  for generated ideas, but no
+  agent contracts, an opt-in live LLM adapter, an internal API, as-of signal
+  generation, and broker-free execution simulation, plus human review gating
+  and review queue API endpoints for generated ideas, but no
   live vendor API integration, broker-grade locate entitlement feed, paper/live
   broker execution, order management, or compliance workflow.
 
@@ -286,8 +293,8 @@ Implemented Level 1 foundations:
 - Offline registry export handoff.
 - Vendor snapshot boundary, paper-to-alpha templates, and execution simulation.
 - Research idea generation, critique, memory, paper-to-alpha v2, and alpha-mining
-  orchestration with deterministic fallback and human approval before generated
-  idea configs run.
+  orchestration with deterministic fallback, an opt-in live OpenAI provider,
+  and human approval before generated idea configs run.
 
 Deferred until separate stories:
 
@@ -299,10 +306,8 @@ Deferred until separate stories:
 
 ## Next Steps
 
-- Add a live LLM provider adapter after prompt/versioning, credentials, and
-  review requirements are specified.
-- Add reviewed prompt templates and provider-specific adapters after the
-  external command boundary has stable transcripts and review queue evidence.
+- Add reviewed prompt templates and additional provider-specific adapters after
+  live OpenAI transcripts have been reviewed.
 - Promote registry export handoff into managed Postgres/object-storage deployment.
 - Add direct vendor API and securities-lending integrations after credential,
   entitlement, and provenance contracts are specified.

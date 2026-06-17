@@ -90,11 +90,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--review-note", default="", help="Human review note for status changes.")
     parser.add_argument("--review-actor", default="operator", help="Actor recorded in review audit events.")
     parser.add_argument("--run-approved-ideas", action="store_true", help="Run approved configs from a review queue.")
-    parser.add_argument("--llm-provider", default="deterministic", choices=["deterministic", "fixture", "command"], help="Research idea provider.")
+    parser.add_argument("--llm-provider", default="deterministic", choices=["deterministic", "fixture", "command", "openai"], help="Research idea provider.")
     parser.add_argument("--llm-fixture", help="JSON fixture response for --llm-provider fixture.")
     parser.add_argument("--llm-command", help="External command for --llm-provider command. Reads prompt JSON from stdin and writes JSON to stdout.")
-    parser.add_argument("--allow-external-llm", action="store_true", help="Allow --llm-provider command to run an external process.")
+    parser.add_argument("--allow-external-llm", action="store_true", help="Allow external LLM providers to run.")
     parser.add_argument("--llm-prompt-version", default="research_idea_v1", help="Prompt/schema version recorded in provider transcripts.")
+    parser.add_argument("--llm-model", help="Live LLM model name, or AIQRA_OPENAI_MODEL for --llm-provider openai.")
+    parser.add_argument("--llm-api-url", help="Override live LLM API URL, or AIQRA_OPENAI_RESPONSES_URL.")
+    parser.add_argument("--llm-timeout", type=float, default=60.0, help="Live LLM request timeout in seconds.")
     args = parser.parse_args(argv)
 
     if args.review_ideas:
@@ -151,6 +154,9 @@ def main(argv: list[str] | None = None) -> int:
             command=args.llm_command,
             allow_external=args.allow_external_llm,
             prompt_version=args.llm_prompt_version,
+            model=args.llm_model,
+            api_url=args.llm_api_url,
+            timeout_seconds=args.llm_timeout,
         )
         print(
             json.dumps(
@@ -201,6 +207,9 @@ def main(argv: list[str] | None = None) -> int:
             allow_external=args.allow_external_llm,
             prompt_version=args.llm_prompt_version,
             review_override=args.review_override,
+            model=args.llm_model,
+            api_url=args.llm_api_url,
+            timeout_seconds=args.llm_timeout,
         )
         print(json.dumps(mining_result_to_dict(result), indent=2, sort_keys=True))
         return 0

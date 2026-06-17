@@ -300,6 +300,9 @@ def generate_idea_configs_with_provider(
     command: str | None = None,
     allow_external: bool = False,
     prompt_version: str = PROMPT_SCHEMA_VERSION,
+    model: str | None = None,
+    api_url: str | None = None,
+    timeout_seconds: float = 60.0,
 ) -> tuple[list[ExperimentIdea], list[Path], Path, Path, ProviderArtifacts | None]:
     base_config = load_config(base_config_path)
     memory = load_research_memory(registry_path)
@@ -328,6 +331,9 @@ def generate_idea_configs_with_provider(
             fixture_path=fixture_path,
             command=command,
             allow_external=allow_external,
+            model=model,
+            api_url=api_url,
+            timeout_seconds=timeout_seconds,
         )
         ideas = [_idea_from_payload(item) for item in raw_ideas[:count]]
         for idea in ideas:
@@ -377,6 +383,9 @@ def mine_alpha(
     allow_external: bool = False,
     prompt_version: str = PROMPT_SCHEMA_VERSION,
     review_override: bool = False,
+    model: str | None = None,
+    api_url: str | None = None,
+    timeout_seconds: float = 60.0,
 ) -> AlphaMiningResult:
     ideas, config_paths, ideas_path, review_queue_path, provider_artifacts = generate_idea_configs_with_provider(
         base_config_path=base_config_path,
@@ -389,6 +398,9 @@ def mine_alpha(
         command=command,
         allow_external=allow_external,
         prompt_version=prompt_version,
+        model=model,
+        api_url=api_url,
+        timeout_seconds=timeout_seconds,
     )
     batch_result = None
     if run_generated:

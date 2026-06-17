@@ -95,6 +95,8 @@ ledger.
     result context.
 31. Expose review queue summary, audit, status-update, and run-approved
     operations through the role-scoped internal API.
+32. Generate research ideas through an opt-in live OpenAI provider while
+    preserving credential guards, transcripts, validation, and review gating.
 
 ## Data Contract
 
@@ -259,8 +261,12 @@ The provider boundary records prompt schema version, prompt payload, provider
 response, and transcript metadata. `fixture` providers enable deterministic
 review of externally generated JSON. `command` providers are guarded by an
 explicit allow flag and environment variable because they can call external
-processes. The platform still rejects invalid provider output before any config
-is written.
+processes. `openai` is an opt-in live provider that requires
+`--allow-external-llm` or `AIQRA_ALLOW_EXTERNAL_LLM=1`, reads credentials from
+`AIQRA_OPENAI_API_KEY` or `OPENAI_API_KEY`, requires an explicit model, and
+writes only normalized response metadata to artifacts. Raw API keys are not
+written to prompt, response, transcript, idea, or review queue artifacts. The
+platform still rejects invalid provider output before any config is written.
 
 Generated idea configs are not execution-ready by default. Idea generation
 writes a `review_queue.json` artifact with one record per config. Records start
@@ -307,11 +313,11 @@ risk status. It does not compute forward returns or claim execution feasibility.
   adapters, plus reproducibility manifests, run comparison, a local experiment
   registry, scheduled batch orchestration, registry export handoff, vendor
   snapshot ingestion, paper-to-alpha template extraction, LLM-facing research
-  idea generation, governed provider transcripts, run critique, research memory,
-  iterative alpha mining, an internal API, as-of signal snapshots, and
-  broker-free execution simulation, but these remain research approximations and
-  do not replace broker execution data, direct securities-lending feeds, direct
-  vendor market data APIs, venue routing analysis, independent alpha review,
-  multiple-hypothesis controls, immutable object storage, multi-user SaaS
-  authorization, a managed live LLM provider, or a full production execution
-  simulator.
+  idea generation, governed provider transcripts, an opt-in live OpenAI adapter,
+  run critique, research memory, iterative alpha mining, an internal API, as-of
+  signal snapshots, and broker-free execution simulation, but these remain
+  research approximations and do not replace broker execution data, direct
+  securities-lending feeds, direct vendor market data APIs, venue routing
+  analysis, independent alpha review, multiple-hypothesis controls, immutable
+  object storage, multi-user SaaS authorization, provider-specific LLM evals and
+  rate-limit orchestration, or a full production execution simulator.

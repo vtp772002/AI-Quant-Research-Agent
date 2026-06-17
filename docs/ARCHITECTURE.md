@@ -52,7 +52,7 @@ quant_research_agent.research_agents
   LLM-facing idea schema, strict validation, memory, critique, and alpha-mining orchestration
 
 quant_research_agent.llm_provider
-  prompt/schema versioning, provider guardrails, and prompt/response transcript artifacts
+  prompt/schema versioning, provider guardrails, live OpenAI adapter, and prompt/response transcript artifacts
 
 quant_research_agent.idea_review
   human review queue, append-only review audit ledger, idea approval state, and run gate enforcement
@@ -160,6 +160,9 @@ the code level even when the storage layer is simple:
 The review queue API follows this split: summary and audit endpoints are
 queries, while status updates and approved-idea runs are commands that delegate
 state changes to `idea_review` and batch execution to `operations`.
+
+Live LLM provider calls stay at the provider boundary. `research_agents` consumes
+validated idea payloads, not raw provider responses or credentials.
 
 ## Observability Contract
 
