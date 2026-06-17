@@ -16,6 +16,9 @@ def test_research_workflow_produces_metrics_and_report(tmp_path: Path):
                 "start": "2020-01-01",
                 "end": "2022-12-31",
                 "seed": 11,
+                "point_in_time_universe": False,
+                "survivorship_bias_free": False,
+                "corporate_actions_adjusted": False,
                 "sectors": {
                     "AAA": "technology",
                     "BBB": "technology",
@@ -39,6 +42,9 @@ def test_research_workflow_produces_metrics_and_report(tmp_path: Path):
                     "rebalance_days": 5,
                     "quantile": 0.25,
                     "transaction_cost_bps": 1.0,
+                    "spread_cost_bps": 2.0,
+                    "market_impact_coefficient": 0.10,
+                    "portfolio_notional": 5_000_000,
                 },
                 "validation": {
                     "walk_forward": {
@@ -86,7 +92,15 @@ def test_research_workflow_produces_metrics_and_report(tmp_path: Path):
     experiments_path = write_experiment_row(result, config)
 
     assert result.backtest.metrics["test"]["observations"] > 0
+    assert result.data_integrity.source == "synthetic"
+    assert result.data_integrity.row_count == len(result.market_data)
+    assert result.data_integrity.warnings
     assert "sharpe" in result.backtest.metrics["full"]
+    assert result.backtest.metrics["test"]["average_total_cost"] > 0
+    assert result.backtest.metrics["test"]["average_spread_cost"] > 0
+    assert result.backtest.metrics["test"]["average_impact_cost"] > 0
+    assert result.backtest.metrics["test"]["max_trade_participation"] > 0
+    assert result.backtest.costs["total_cost"].gt(0).any()
     assert len(result.backtest.walk_forward) == 3
     assert result.backtest.walk_forward[0].metrics["observations"] > 0
     assert result.factor_diagnostics.selected_factors == ["momentum_20d", "volatility_20d", "reversal_20d"]
@@ -106,9 +120,12 @@ def test_research_workflow_produces_metrics_and_report(tmp_path: Path):
     assert report_path.exists()
     report_text = report_path.read_text()
     assert "AI Quant Research Report" in report_text
+    assert "Data Integrity" in report_text
+    assert "Survivorship-bias-free: no" in report_text
     assert "Factor Diagnostics" in report_text
     assert "momentum_20d | reversal_20d" in report_text
     assert "Baseline Comparison" in report_text
+    assert "Execution Costs" in report_text
     assert "Stress Tests" in report_text
     assert "sector_neutral_signal" in report_text
     assert "liquidity_top_80pct" in report_text
@@ -127,4 +144,6 @@ def test_research_workflow_produces_metrics_and_report(tmp_path: Path):
         "sector_neutral_liquidity_top_80pct",
     }
     assert {"full_sample", "wf_01", "wf_02", "wf_03"}.issubset(set(experiment_rows["window"]))
+    assert "test_average_total_cost" in experiment_rows.columns
+    assert experiment_rows["test_average_total_cost"].gt(0).any()
     assert len(experiment_rows) == 28

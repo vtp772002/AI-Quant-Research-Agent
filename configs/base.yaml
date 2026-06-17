@@ -24,6 +24,9 @@ data:
   start: "2020-01-01"
   end: "2024-12-31"
   seed: 42
+  point_in_time_universe: false
+  survivorship_bias_free: false
+  corporate_actions_adjusted: false
   sectors:
     AAPL: technology
     MSFT: technology
@@ -62,6 +65,9 @@ experiment:
     rebalance_days: 5
     quantile: 0.2
     transaction_cost_bps: 5.0
+    spread_cost_bps: 2.0
+    market_impact_coefficient: 0.10
+    portfolio_notional: 10000000
   validation:
     walk_forward:
       window_count: 3

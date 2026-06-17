@@ -10,6 +10,7 @@ from quant_research_agent.agents.hypothesis_agent import Hypothesis, HypothesisA
 from quant_research_agent.agents.stress_tests import evaluate_stress_tests
 from quant_research_agent.backtest.engine import BacktestResult, run_long_short_backtest
 from quant_research_agent.config import AppConfig
+from quant_research_agent.data.integrity import DataIntegrityReport, assess_market_data_integrity
 from quant_research_agent.data.loader import MarketDataRequest, load_market_data
 from quant_research_agent.factors.diagnostics import (
     FactorDiagnostics,
@@ -23,6 +24,7 @@ from quant_research_agent.factors.registry import compute_factor_library
 class ResearchRunResult:
     hypothesis: Hypothesis
     market_data: pd.DataFrame
+    data_integrity: DataIntegrityReport
     factors: pd.DataFrame
     signal: pd.Series
     backtest: BacktestResult
@@ -42,6 +44,16 @@ def run_research_workflow(config: AppConfig) -> ResearchRunResult:
             seed=config.data.seed,
         )
     )
+    data_integrity = assess_market_data_integrity(
+        data=market_data,
+        source=config.data.source,
+        requested_symbols=config.data.universe,
+        start=config.data.start,
+        end=config.data.end,
+        point_in_time_universe=config.data.point_in_time_universe,
+        survivorship_bias_free=config.data.survivorship_bias_free,
+        corporate_actions_adjusted=config.data.corporate_actions_adjusted,
+    )
     factors = compute_factor_library(market_data)
     signal = FactorAgent().build_signal(factors, config.experiment.signal)
     backtest = run_long_short_backtest(
@@ -52,6 +64,9 @@ def run_research_workflow(config: AppConfig) -> ResearchRunResult:
         rebalance_days=config.experiment.backtest.rebalance_days,
         quantile=config.experiment.backtest.quantile,
         transaction_cost_bps=config.experiment.backtest.transaction_cost_bps,
+        spread_cost_bps=config.experiment.backtest.spread_cost_bps,
+        market_impact_coefficient=config.experiment.backtest.market_impact_coefficient,
+        portfolio_notional=config.experiment.backtest.portfolio_notional,
         walk_forward_windows=config.experiment.validation.walk_forward.window_count,
         walk_forward_min_train_fraction=config.experiment.validation.walk_forward.min_train_fraction,
     )
@@ -74,6 +89,7 @@ def run_research_workflow(config: AppConfig) -> ResearchRunResult:
     return ResearchRunResult(
         hypothesis=hypothesis,
         market_data=market_data,
+        data_integrity=data_integrity,
         factors=factors,
         signal=signal,
         backtest=backtest,

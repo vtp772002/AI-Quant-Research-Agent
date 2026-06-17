@@ -89,6 +89,9 @@ The research report includes:
 - Walk-forward validation across multiple chronological windows.
 - Factor coverage and redundancy diagnostics for selected exposures.
 - Neutralization and liquidity stress tests for the agent signal.
+- Data integrity diagnostics for source quality, panel coverage, and
+  institutional-readiness assumptions.
+- Base, spread, and liquidity-sensitive market-impact transaction costs.
 
 ## Validation
 
@@ -100,12 +103,15 @@ python -m quant_research_agent.main --config configs/base.yaml --json
 ## Limitations
 
 - Synthetic data validates mechanics but is not investment evidence.
-- Yahoo Finance is a convenient demo source, not an institutional data source.
-- v1 has diagnostic neutralization and liquidity stress tests, but no borrow
-  constraints, survivorship controls, or advanced transaction cost model.
+- Yahoo Finance is a convenient demo source, not an institutional data source;
+  reports flag this explicitly in the data integrity section.
+- v1 has diagnostic neutralization, liquidity stress tests, and a
+  liquidity-sensitive transaction cost model, but no borrow constraints,
+  survivorship-safe vendor integration, or broker-grade execution simulator.
 
 ## Next Steps
 
-- Add borrow costs and liquidity-sensitive transaction cost modeling.
+- Add borrow costs and shortability constraints.
+- Add point-in-time vendor data integration with survivorship-safe universes.
 - Add paper-to-alpha extraction that turns quant papers/blogs into experiment
   templates.

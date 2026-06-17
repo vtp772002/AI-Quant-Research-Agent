@@ -24,6 +24,7 @@ def main(argv: list[str] | None = None) -> int:
         "experiment": config.experiment.name,
         "report_path": str(report_path),
         "experiments_path": str(experiments_path),
+        "data_integrity": _data_integrity_payload(result),
         "metrics": result.backtest.metrics,
         "baselines": {
             name: backtest.metrics for name, backtest in result.baselines.items()
@@ -95,6 +96,39 @@ def _factor_diagnostics_payload(result) -> dict[str, object]:
             }
             for pair in diagnostics.redundant_pairs
         ],
+    }
+
+
+def _data_integrity_payload(result) -> dict[str, object]:
+    report = result.data_integrity
+    return {
+        "source": report.source,
+        "requested_symbols": report.requested_symbols,
+        "observed_symbols": report.observed_symbols,
+        "start": report.start,
+        "end": report.end,
+        "row_count": report.row_count,
+        "date_count": report.date_count,
+        "duplicate_index_rows": report.duplicate_index_rows,
+        "missing_symbols": report.missing_symbols,
+        "point_in_time_universe": report.point_in_time_universe,
+        "survivorship_bias_free": report.survivorship_bias_free,
+        "corporate_actions_adjusted": report.corporate_actions_adjusted,
+        "quality_by_symbol": [
+            {
+                "symbol": item.symbol,
+                "observations": item.observations,
+                "expected_observations": item.expected_observations,
+                "coverage": item.coverage,
+                "missing_rows": item.missing_rows,
+                "zero_volume_rows": item.zero_volume_rows,
+                "non_positive_price_rows": item.non_positive_price_rows,
+                "stale_price_rows": item.stale_price_rows,
+                "extreme_return_rows": item.extreme_return_rows,
+            }
+            for item in report.quality_by_symbol
+        ],
+        "warnings": report.warnings,
     }
 
 

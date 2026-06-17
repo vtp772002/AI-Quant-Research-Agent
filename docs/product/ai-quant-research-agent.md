@@ -24,17 +24,22 @@ python -m src.main --config configs/base.yaml
 ## Core Workflow
 
 1. Load OHLCV market data for a configured universe.
-2. Propose or load an alpha hypothesis.
-3. Compute a reusable factor library.
-4. Convert selected factors into a cross-sectional signal.
-5. Diagnose selected factor coverage and pairwise redundancy.
-6. Run a long-short backtest with chronological train/test split.
-7. Compare the agent signal against configured baseline strategies.
-8. Validate signal stability over configured walk-forward windows.
-9. Stress-test the agent signal with configured neutralization and liquidity
+2. Diagnose data source quality, panel coverage, and institutional-readiness
+   assumptions.
+3. Propose or load an alpha hypothesis.
+4. Compute a reusable factor library.
+5. Convert selected factors into a cross-sectional signal.
+6. Diagnose selected factor coverage and pairwise redundancy.
+7. Run a long-short backtest with chronological train/test split.
+8. Compare the agent signal against configured baseline strategies.
+9. Validate signal stability over configured walk-forward windows.
+10. Stress-test the agent signal with configured neutralization and liquidity
    constraints.
-10. Calculate IC, Sharpe ratio, max drawdown, turnover, and total return.
-11. Write a Markdown research report and append experiment metrics.
+11. Apply base, spread, and liquidity-sensitive market-impact transaction
+   costs.
+12. Calculate IC, Sharpe ratio, max drawdown, turnover, costs, and total
+   return.
+13. Write a Markdown research report and append experiment metrics.
 
 ## Data Contract
 
@@ -54,6 +59,12 @@ for real-market experiments.
 The Yahoo demo configuration is `configs/yahoo_nasdaq_demo.yaml`. It is intended
 for exploratory real-data runs and may fail when the external data provider is
 unavailable.
+
+Data integrity diagnostics report requested versus observed symbols, row and
+date counts, per-symbol coverage, duplicate index rows, non-positive prices or
+volume, stale adjusted closes, extreme adjusted returns, and explicit warnings
+when data is not marked point-in-time, survivorship-bias-free, or
+institutional-grade for corporate actions.
 
 ## Methodology
 
@@ -82,13 +93,22 @@ cross-sectional mean signal on each rebalance date. Liquidity filtering removes
 assets below the configured cross-sectional `dollar_volume_20d` rank before
 portfolio construction.
 
+Transaction costs include a base turnover cost, spread cost, and
+liquidity-sensitive market impact cost. Market impact is estimated from trade
+size as a fraction of rolling 20-day average dollar volume using the configured
+portfolio notional and impact coefficient. Reports include average base,
+spread, impact, total cost, and trade participation diagnostics.
+
 ## Limitations
 
 - Synthetic data validates mechanics, not investment merit.
 - Yahoo Finance data is useful for demos but not institutional-grade research
   data.
+- Data integrity diagnostics identify readiness gaps but do not create
+  survivorship-safe data by themselves.
 - Walk-forward validation tests temporal stability but does not remove the need
   for better data controls and independent hypothesis review.
-- v1 stress tests include sector neutralization and liquidity filtering, but
-  they do not replace full risk modeling, borrow constraints, survivorship
-  controls, or a full transaction cost model.
+- v1 includes a liquidity-sensitive transaction cost model, but it is still a
+  research approximation and does not replace broker execution data, venue
+  routing analysis, borrow constraints, survivorship controls, or a full
+  production execution simulator.

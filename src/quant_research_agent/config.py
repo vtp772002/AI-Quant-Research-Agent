@@ -15,6 +15,9 @@ class DataConfig:
     end: str
     seed: int = 42
     sectors: dict[str, str] | None = None
+    point_in_time_universe: bool = False
+    survivorship_bias_free: bool = False
+    corporate_actions_adjusted: bool = False
 
 
 @dataclass(frozen=True)
@@ -30,6 +33,9 @@ class BacktestConfig:
     rebalance_days: int
     quantile: float
     transaction_cost_bps: float = 0.0
+    spread_cost_bps: float = 0.0
+    market_impact_coefficient: float = 0.0
+    portfolio_notional: float = 1_000_000.0
 
 
 @dataclass(frozen=True)
@@ -117,6 +123,22 @@ def parse_config(raw: dict[str, Any]) -> AppConfig:
     if not 0.0 < quantile < 0.5:
         raise ValueError("experiment.backtest.quantile must be between 0 and 0.5")
 
+    transaction_cost_bps = float(backtest.get("transaction_cost_bps", 0.0))
+    if transaction_cost_bps < 0.0:
+        raise ValueError("experiment.backtest.transaction_cost_bps must be non-negative")
+
+    spread_cost_bps = float(backtest.get("spread_cost_bps", 0.0))
+    if spread_cost_bps < 0.0:
+        raise ValueError("experiment.backtest.spread_cost_bps must be non-negative")
+
+    market_impact_coefficient = float(backtest.get("market_impact_coefficient", 0.0))
+    if market_impact_coefficient < 0.0:
+        raise ValueError("experiment.backtest.market_impact_coefficient must be non-negative")
+
+    portfolio_notional = float(backtest.get("portfolio_notional", 1_000_000.0))
+    if portfolio_notional <= 0.0:
+        raise ValueError("experiment.backtest.portfolio_notional must be positive")
+
     walk_forward_window_count = int(walk_forward.get("window_count", 0))
     if walk_forward_window_count < 0:
         raise ValueError("experiment.validation.walk_forward.window_count must be non-negative")
@@ -146,6 +168,9 @@ def parse_config(raw: dict[str, Any]) -> AppConfig:
             end=str(data["end"]),
             seed=int(data.get("seed", 42)),
             sectors=parsed_sectors,
+            point_in_time_universe=bool(data.get("point_in_time_universe", False)),
+            survivorship_bias_free=bool(data.get("survivorship_bias_free", False)),
+            corporate_actions_adjusted=bool(data.get("corporate_actions_adjusted", False)),
         ),
         experiment=ExperimentConfig(
             name=str(experiment["name"]),
@@ -159,7 +184,10 @@ def parse_config(raw: dict[str, Any]) -> AppConfig:
                 holding_period=int(backtest.get("holding_period", 5)),
                 rebalance_days=int(backtest.get("rebalance_days", 5)),
                 quantile=quantile,
-                transaction_cost_bps=float(backtest.get("transaction_cost_bps", 0.0)),
+                transaction_cost_bps=transaction_cost_bps,
+                spread_cost_bps=spread_cost_bps,
+                market_impact_coefficient=market_impact_coefficient,
+                portfolio_notional=portfolio_notional,
             ),
             baselines=[
                 BaselineConfig(

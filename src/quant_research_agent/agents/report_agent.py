@@ -36,6 +36,14 @@ class ReportAgent:
                 f"- Rebalance: every {config.experiment.backtest.rebalance_days} trading days",
                 f"- Long/short quantile: {config.experiment.backtest.quantile:.0%}",
                 "",
+                "## Data Integrity",
+                "",
+                _data_integrity_summary(result),
+                "",
+                _data_quality_table(result),
+                "",
+                _data_integrity_warnings(result),
+                "",
                 "## Hypothesis",
                 "",
                 result.hypothesis.statement,
@@ -65,6 +73,10 @@ class ReportAgent:
                         "Full": full,
                     }
                 ),
+                "",
+                "## Execution Costs",
+                "",
+                _execution_cost_table(result),
                 "",
                 "## Baseline Comparison",
                 "",
@@ -98,14 +110,14 @@ class ReportAgent:
                 "",
                 "- Synthetic data is useful for deterministic validation but is not investment evidence.",
                 "- Stress tests are diagnostics; the primary portfolio remains a simple long-short ranking portfolio.",
-                "- Transaction costs are modeled as proportional turnover costs only.",
-                "- No borrow constraints, market impact model, corporate actions, or survivorship controls are included yet.",
+                "- Transaction costs are modeled with base, spread, and participation-based impact assumptions, not broker execution data.",
+                "- No borrow constraints, corporate actions, or survivorship controls are included yet.",
                 "",
                 "## Next Experiments",
                 "",
                 "- Run the same signal on Yahoo Finance data for a real equity universe.",
                 "- Replace redundant factors or orthogonalize correlated exposures before combining signals.",
-                "- Add borrow costs and a liquidity-sensitive transaction cost model.",
+                "- Add borrow costs and shortability constraints.",
                 "- Compare this factor against pure momentum, pure low volatility, and reversal baselines.",
                 "",
             ]
@@ -216,15 +228,88 @@ def _experiment_rows_for_strategy(
 
 
 def _metrics_table(sections: dict[str, dict[str, float]]) -> str:
-    rows = ["| Split | IC Mean | Sharpe | Max Drawdown | Avg Turnover | Total Return |", "| --- | ---: | ---: | ---: | ---: | ---: |"]
+    rows = [
+        "| Split | IC Mean | Sharpe | Max Drawdown | Avg Turnover | Avg Cost | Total Return |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+    ]
     for name, metrics in sections.items():
         rows.append(
-            "| {name} | {ic_mean:.4f} | {sharpe:.2f} | {max_drawdown:.2%} | {average_turnover:.2f} | {total_return:.2%} |".format(
+            "| {name} | {ic_mean:.4f} | {sharpe:.2f} | {max_drawdown:.2%} | {average_turnover:.2f} | {average_total_cost:.2%} | {total_return:.2%} |".format(
                 name=name,
                 **metrics,
             )
         )
     return "\n".join(rows)
+
+
+def _execution_cost_table(result: ResearchRunResult) -> str:
+    rows = [
+        "| Component | Train | Test | Full |",
+        "| --- | ---: | ---: | ---: |",
+    ]
+    labels = {
+        "average_base_cost": "Avg base cost",
+        "average_spread_cost": "Avg spread cost",
+        "average_impact_cost": "Avg impact cost",
+        "average_total_cost": "Avg total cost",
+        "cumulative_total_cost": "Cumulative cost",
+        "average_trade_participation": "Avg trade participation",
+        "max_trade_participation": "Max trade participation",
+    }
+    for key, label in labels.items():
+        rows.append(
+            "| {label} | {train:.2%} | {test:.2%} | {full:.2%} |".format(
+                label=label,
+                train=result.backtest.metrics["train"][key],
+                test=result.backtest.metrics["test"][key],
+                full=result.backtest.metrics["full"][key],
+            )
+        )
+    return "\n".join(rows)
+
+
+def _data_integrity_summary(result: ResearchRunResult) -> str:
+    report = result.data_integrity
+    return "\n".join(
+        [
+            f"- Source: `{report.source}`",
+            f"- Requested symbols: {len(report.requested_symbols)}",
+            f"- Observed symbols: {len(report.observed_symbols)}",
+            f"- Date rows: {report.date_count}",
+            f"- Panel rows: {report.row_count}",
+            f"- Point-in-time universe: {_yes_no(report.point_in_time_universe)}",
+            f"- Survivorship-bias-free: {_yes_no(report.survivorship_bias_free)}",
+            f"- Corporate actions institutional-grade: {_yes_no(report.corporate_actions_adjusted)}",
+        ]
+    )
+
+
+def _data_quality_table(result: ResearchRunResult) -> str:
+    rows = [
+        "| Symbol | Observations | Coverage | Missing Rows | Zero Volume | Bad Prices | Extreme Returns | Stale Prices |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+    ]
+    for item in result.data_integrity.quality_by_symbol:
+        rows.append(
+            "| {symbol} | {observations} | {coverage:.2%} | {missing_rows} | {zero_volume_rows} | {non_positive_price_rows} | {extreme_return_rows} | {stale_price_rows} |".format(
+                symbol=item.symbol,
+                observations=item.observations,
+                coverage=item.coverage,
+                missing_rows=item.missing_rows,
+                zero_volume_rows=item.zero_volume_rows,
+                non_positive_price_rows=item.non_positive_price_rows,
+                extreme_return_rows=item.extreme_return_rows,
+                stale_price_rows=item.stale_price_rows,
+            )
+        )
+    return "\n".join(rows)
+
+
+def _data_integrity_warnings(result: ResearchRunResult) -> str:
+    warnings = result.data_integrity.warnings
+    if not warnings:
+        return "No data integrity warnings were detected."
+    return "\n".join(["Warnings:"] + [f"- {warning}" for warning in warnings])
 
 
 def _decision_summary(metrics: dict[str, float]) -> str:
@@ -246,14 +331,14 @@ def _decision_summary(metrics: dict[str, float]) -> str:
 
 def _baseline_table(result: ResearchRunResult) -> str:
     rows = [
-        "| Strategy | Test IC | Test Sharpe | Test Max Drawdown | Test Turnover | Test Total Return |",
-        "| --- | ---: | ---: | ---: | ---: | ---: |",
+        "| Strategy | Test IC | Test Sharpe | Test Max Drawdown | Test Turnover | Test Cost | Test Total Return |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
     ]
     strategies = {"agent_signal": result.backtest, **result.baselines}
     for name, backtest in strategies.items():
         metrics = backtest.metrics["test"]
         rows.append(
-            "| {name} | {ic_mean:.4f} | {sharpe:.2f} | {max_drawdown:.2%} | {average_turnover:.2f} | {total_return:.2%} |".format(
+            "| {name} | {ic_mean:.4f} | {sharpe:.2f} | {max_drawdown:.2%} | {average_turnover:.2f} | {average_total_cost:.2%} | {total_return:.2%} |".format(
                 name=name,
                 **metrics,
             )
@@ -266,13 +351,13 @@ def _stress_test_table(result: ResearchRunResult) -> str:
         return "No neutralization or liquidity stress tests were configured for this run."
 
     rows = [
-        "| Stress Test | Test IC | Test Sharpe | Test Max Drawdown | Test Turnover | Test Total Return |",
-        "| --- | ---: | ---: | ---: | ---: | ---: |",
+        "| Stress Test | Test IC | Test Sharpe | Test Max Drawdown | Test Turnover | Test Cost | Test Total Return |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
     ]
     for name, backtest in result.stress_tests.items():
         metrics = backtest.metrics["test"]
         rows.append(
-            "| {name} | {ic_mean:.4f} | {sharpe:.2f} | {max_drawdown:.2%} | {average_turnover:.2f} | {total_return:.2%} |".format(
+            "| {name} | {ic_mean:.4f} | {sharpe:.2f} | {max_drawdown:.2%} | {average_turnover:.2f} | {average_total_cost:.2%} | {total_return:.2%} |".format(
                 name=name,
                 **metrics,
             )
@@ -382,13 +467,13 @@ def _walk_forward_agent_table(backtest: BacktestResult) -> str:
         return "Walk-forward validation is not configured for this experiment."
 
     rows = [
-        "| Window | Train Through | Test Range | Obs | IC Mean | Sharpe | Hit Rate | Total Return |",
-        "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |",
+        "| Window | Train Through | Test Range | Obs | IC Mean | Sharpe | Avg Cost | Hit Rate | Total Return |",
+        "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |",
     ]
     for window in backtest.walk_forward:
         metrics = window.metrics
         rows.append(
-            "| {name} | {train_end} | {test_start} to {test_end} | {observations:.0f} | {ic_mean:.4f} | {sharpe:.2f} | {ic_hit_rate:.2%} | {total_return:.2%} |".format(
+            "| {name} | {train_end} | {test_start} to {test_end} | {observations:.0f} | {ic_mean:.4f} | {sharpe:.2f} | {average_total_cost:.2%} | {ic_hit_rate:.2%} | {total_return:.2%} |".format(
                 name=window.name,
                 train_end=_date_text(window.train_end),
                 test_start=_date_text(window.test_start),
@@ -405,8 +490,8 @@ def _walk_forward_strategy_table(result: ResearchRunResult) -> str:
         return ""
 
     rows = [
-        "| Strategy | Windows | Mean Test IC | Mean Sharpe | Positive IC Windows | Median Total Return |",
-        "| --- | ---: | ---: | ---: | ---: | ---: |",
+        "| Strategy | Windows | Mean Test IC | Mean Sharpe | Mean Cost | Positive IC Windows | Median Total Return |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
     ]
     for name, backtest in strategies.items():
         windows = backtest.walk_forward
@@ -414,13 +499,15 @@ def _walk_forward_strategy_table(result: ResearchRunResult) -> str:
             continue
         ic_values = pd.Series([window.metrics["ic_mean"] for window in windows])
         sharpe_values = pd.Series([window.metrics["sharpe"] for window in windows])
+        cost_values = pd.Series([window.metrics["average_total_cost"] for window in windows])
         total_returns = pd.Series([window.metrics["total_return"] for window in windows])
         rows.append(
-            "| {name} | {count} | {mean_ic:.4f} | {mean_sharpe:.2f} | {positive_ic:.2%} | {median_return:.2%} |".format(
+            "| {name} | {count} | {mean_ic:.4f} | {mean_sharpe:.2f} | {mean_cost:.2%} | {positive_ic:.2%} | {median_return:.2%} |".format(
                 name=name,
                 count=len(windows),
                 mean_ic=float(ic_values.mean()),
                 mean_sharpe=float(sharpe_values.mean()),
+                mean_cost=float(cost_values.mean()),
                 positive_ic=float((ic_values > 0).mean()),
                 median_return=float(total_returns.median()),
             )
@@ -447,3 +534,7 @@ def _walk_forward_interpretation(result: ResearchRunResult) -> str:
 
 def _date_text(value: pd.Timestamp) -> str:
     return pd.Timestamp(value).date().isoformat()
+
+
+def _yes_no(value: bool) -> str:
+    return "yes" if value else "no"

@@ -20,10 +20,12 @@ class WalkForwardWindow:
 
 @dataclass(frozen=True)
 class BacktestResult:
+    raw_returns: pd.Series
     returns: pd.Series
     positions: pd.DataFrame
     ic_by_date: pd.Series
     turnover: pd.Series
+    costs: pd.DataFrame
     metrics: dict[str, dict[str, float]]
     split_date: pd.Timestamp
     walk_forward: list[WalkForwardWindow]
@@ -37,6 +39,9 @@ def run_long_short_backtest(
     rebalance_days: int,
     quantile: float,
     transaction_cost_bps: float,
+    spread_cost_bps: float = 0.0,
+    market_impact_coefficient: float = 0.0,
+    portfolio_notional: float = 1_000_000.0,
     walk_forward_windows: int = 0,
     walk_forward_min_train_fraction: float = 0.4,
 ) -> BacktestResult:
@@ -51,28 +56,39 @@ def run_long_short_backtest(
     positions = _build_positions(aligned["signal"], quantile=quantile)
     raw_returns = _portfolio_forward_returns(positions, aligned["forward_return"])
     turnover = _turnover(positions)
-    costs = turnover * (transaction_cost_bps / 10_000.0)
-    returns = (raw_returns - costs).rename("strategy_return").dropna()
+    costs = _transaction_costs(
+        market_data=market_data,
+        positions=positions,
+        turnover=turnover,
+        base_cost_bps=transaction_cost_bps,
+        spread_cost_bps=spread_cost_bps,
+        market_impact_coefficient=market_impact_coefficient,
+        portfolio_notional=portfolio_notional,
+    )
+    returns = (raw_returns - costs["total_cost"]).rename("strategy_return").dropna()
 
     ic_by_date = _information_coefficient(aligned)
     split_date = _split_date(returns.index, train_fraction)
     metrics = {
-        "train": compute_metric_summary(
+        "train": _metric_summary(
             returns=returns.loc[returns.index <= split_date],
             ic_by_date=ic_by_date.loc[ic_by_date.index <= split_date],
             turnover=turnover.loc[turnover.index <= split_date],
+            costs=costs.loc[costs.index <= split_date],
             holding_period=holding_period,
         ),
-        "test": compute_metric_summary(
+        "test": _metric_summary(
             returns=returns.loc[returns.index > split_date],
             ic_by_date=ic_by_date.loc[ic_by_date.index > split_date],
             turnover=turnover.loc[turnover.index > split_date],
+            costs=costs.loc[costs.index > split_date],
             holding_period=holding_period,
         ),
-        "full": compute_metric_summary(
+        "full": _metric_summary(
             returns=returns,
             ic_by_date=ic_by_date,
             turnover=turnover,
+            costs=costs,
             holding_period=holding_period,
         ),
     }
@@ -80,16 +96,19 @@ def run_long_short_backtest(
         returns=returns,
         ic_by_date=ic_by_date,
         turnover=turnover,
+        costs=costs,
         holding_period=holding_period,
         window_count=walk_forward_windows,
         min_train_fraction=walk_forward_min_train_fraction,
     )
 
     return BacktestResult(
+        raw_returns=raw_returns,
         returns=returns,
         positions=positions,
         ic_by_date=ic_by_date,
         turnover=turnover,
+        costs=costs,
         metrics=metrics,
         split_date=split_date,
         walk_forward=walk_forward,
@@ -138,6 +157,42 @@ def _turnover(positions: pd.DataFrame) -> pd.Series:
     return (positions - previous).abs().sum(axis=1).rename("turnover")
 
 
+def _transaction_costs(
+    market_data: pd.DataFrame,
+    positions: pd.DataFrame,
+    turnover: pd.Series,
+    base_cost_bps: float,
+    spread_cost_bps: float,
+    market_impact_coefficient: float,
+    portfolio_notional: float,
+) -> pd.DataFrame:
+    close = market_data["adj_close"].unstack("symbol")
+    volume = market_data["volume"].unstack("symbol")
+    dollar_volume = close * volume
+    adv_20d = dollar_volume.rolling(20, min_periods=1).mean().reindex(index=positions.index, columns=positions.columns)
+
+    previous = positions.shift(1).fillna(0.0)
+    trades = (positions - previous).abs()
+    base_cost = turnover * (base_cost_bps / 10_000.0)
+    spread_cost = turnover * (spread_cost_bps / 10_000.0)
+    participation = (trades * portfolio_notional) / adv_20d.replace(0, np.nan)
+    impact_cost = (trades * participation.fillna(0.0) * market_impact_coefficient).sum(axis=1)
+    weighted_participation = (trades * participation.fillna(0.0)).sum(axis=1) / trades.sum(axis=1).replace(0, np.nan)
+
+    costs = pd.DataFrame(
+        {
+            "base_cost": base_cost,
+            "spread_cost": spread_cost,
+            "impact_cost": impact_cost,
+            "average_trade_participation": weighted_participation.fillna(0.0),
+            "max_trade_participation": participation.max(axis=1).fillna(0.0),
+        }
+    )
+    costs["total_cost"] = costs["base_cost"] + costs["spread_cost"] + costs["impact_cost"]
+    costs.index.name = "date"
+    return costs.fillna(0.0)
+
+
 def _information_coefficient(aligned: pd.DataFrame) -> pd.Series:
     values = {}
     for date, frame in aligned.groupby(level="date"):
@@ -161,6 +216,7 @@ def _walk_forward_metrics(
     returns: pd.Series,
     ic_by_date: pd.Series,
     turnover: pd.Series,
+    costs: pd.DataFrame,
     holding_period: int,
     window_count: int,
     min_train_fraction: float,
@@ -204,8 +260,47 @@ def _walk_forward_metrics(
                     ic_by_date=ic_by_date.reindex(test_returns.index),
                     turnover=turnover.reindex(test_returns.index),
                     holding_period=holding_period,
-                ),
+                )
+                | _cost_metric_summary(costs.reindex(test_returns.index)),
             )
         )
 
     return windows
+
+
+def _metric_summary(
+    returns: pd.Series,
+    ic_by_date: pd.Series,
+    turnover: pd.Series,
+    costs: pd.DataFrame,
+    holding_period: int,
+) -> dict[str, float]:
+    return compute_metric_summary(
+        returns=returns,
+        ic_by_date=ic_by_date,
+        turnover=turnover,
+        holding_period=holding_period,
+    ) | _cost_metric_summary(costs.reindex(returns.index))
+
+
+def _cost_metric_summary(costs: pd.DataFrame) -> dict[str, float]:
+    costs = costs.fillna(0.0)
+    if costs.empty:
+        return {
+            "average_total_cost": 0.0,
+            "average_base_cost": 0.0,
+            "average_spread_cost": 0.0,
+            "average_impact_cost": 0.0,
+            "cumulative_total_cost": 0.0,
+            "average_trade_participation": 0.0,
+            "max_trade_participation": 0.0,
+        }
+    return {
+        "average_total_cost": float(costs["total_cost"].mean()),
+        "average_base_cost": float(costs["base_cost"].mean()),
+        "average_spread_cost": float(costs["spread_cost"].mean()),
+        "average_impact_cost": float(costs["impact_cost"].mean()),
+        "cumulative_total_cost": float(costs["total_cost"].sum()),
+        "average_trade_participation": float(costs["average_trade_participation"].mean()),
+        "max_trade_participation": float(costs["max_trade_participation"].max()),
+    }
