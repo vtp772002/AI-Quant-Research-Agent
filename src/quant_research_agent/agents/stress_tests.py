@@ -55,6 +55,8 @@ def _run_backtest(market_data: pd.DataFrame, signal: pd.Series, config: AppConfi
         spread_cost_bps=config.experiment.backtest.spread_cost_bps,
         market_impact_coefficient=config.experiment.backtest.market_impact_coefficient,
         portfolio_notional=config.experiment.backtest.portfolio_notional,
+        borrow_fee_bps=config.experiment.shorting.borrow_fee_bps,
+        shortable_symbols=config.experiment.shorting.shortable_symbols,
         walk_forward_windows=config.experiment.validation.walk_forward.window_count,
         walk_forward_min_train_fraction=config.experiment.validation.walk_forward.min_train_fraction,
     )

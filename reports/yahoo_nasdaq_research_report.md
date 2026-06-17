@@ -8,10 +8,14 @@
 - Holding period: 5 trading days
 - Rebalance: every 5 trading days
 - Long/short quantile: 20%
+- Borrow fee: 75.0 bps annualized
+- Shortable universe: 18 configured symbols
 
 ## Data Integrity
 
 - Source: `yahoo`
+- Universe source: `static`
+- Membership rows: 20
 - Requested symbols: 20
 - Observed symbols: 20
 - Date rows: 1507
@@ -79,58 +83,88 @@ No selected factor pairs exceeded absolute Spearman correlation of 0.75.
 
 | Split | IC Mean | Sharpe | Max Drawdown | Avg Turnover | Avg Cost | Total Return |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Train | 0.0209 | 0.23 | -29.99% | 1.65 | 0.15% | 11.64% |
-| Test | -0.0079 | -0.55 | -29.33% | 1.58 | 0.13% | -23.13% |
-| Full | 0.0123 | 0.01 | -29.99% | 1.63 | 0.14% | -14.19% |
+| Train | 0.0209 | 0.23 | -30.68% | 1.73 | 0.17% | 11.58% |
+| Test | -0.0079 | -0.29 | -28.13% | 1.62 | 0.15% | -15.17% |
+| Full | 0.0123 | 0.09 | -35.43% | 1.70 | 0.16% | -5.35% |
 
 ## Execution Costs
 
 | Component | Train | Test | Full |
 | --- | ---: | ---: | ---: |
-| Avg base cost | 0.08% | 0.08% | 0.08% |
+| Avg base cost | 0.09% | 0.08% | 0.08% |
 | Avg spread cost | 0.03% | 0.03% | 0.03% |
-| Avg impact cost | 0.03% | 0.02% | 0.03% |
-| Avg total cost | 0.15% | 0.13% | 0.14% |
-| Cumulative cost | 29.82% | 11.14% | 40.96% |
-| Avg trade participation | 0.19% | 0.12% | 0.16% |
-| Max trade participation | 1.27% | 0.69% | 1.27% |
+| Avg impact cost | 0.04% | 0.02% | 0.03% |
+| Avg borrow cost | 0.01% | 0.01% | 0.01% |
+| Avg total cost | 0.17% | 0.15% | 0.16% |
+| Cumulative cost | 34.88% | 12.78% | 47.66% |
+| Avg trade participation | 0.20% | 0.12% | 0.18% |
+| Max trade participation | 1.51% | 0.69% | 1.51% |
+
+## Robustness Diagnostics
+
+| Metric | Mean | 2.5% | 97.5% | Positive Probability |
+| --- | ---: | ---: | ---: | ---: |
+| Test Sharpe | -0.27 | -1.65 | 1.52 | 37.00% |
+| Test IC | -0.0041 | -0.0643 | 0.0629 | 41.50% |
+
+Parameter Sensitivity:
+
+| Variant | Holding | Quantile | Cost Mult | Test IC | Test Sharpe | Test Cost | Test Return |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| h3_q15 | 3 | 15% | 1.00 | 0.0005 | -0.13 | 0.17% | -6.61% |
+| h3_q20 | 3 | 20% | 1.00 | 0.0005 | -0.78 | 0.14% | -17.98% |
+| h3_q30 | 3 | 30% | 1.00 | 0.0005 | -0.46 | 0.12% | -10.77% |
+| h5_q15 | 5 | 15% | 1.00 | -0.0079 | -0.12 | 0.17% | -11.80% |
+| h5_q20 | 5 | 20% | 1.00 | -0.0079 | -0.29 | 0.15% | -15.17% |
+| h5_q30 | 5 | 30% | 1.00 | -0.0079 | -0.22 | 0.12% | -11.16% |
+| h10_q15 | 10 | 15% | 1.00 | -0.0195 | -0.32 | 0.19% | -34.37% |
+| h10_q20 | 10 | 20% | 1.00 | -0.0195 | -0.50 | 0.16% | -39.59% |
+| h10_q30 | 10 | 30% | 1.00 | -0.0195 | -0.18 | 0.14% | -18.40% |
+
+Cost Sensitivity:
+
+| Variant | Holding | Quantile | Cost Mult | Test IC | Test Sharpe | Test Cost | Test Return |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| cost_0.5x | 5 | 20% | 0.50 | -0.0079 | -0.13 | 0.07% | -9.56% |
+| cost_1x | 5 | 20% | 1.00 | -0.0079 | -0.29 | 0.15% | -15.17% |
+| cost_2x | 5 | 20% | 2.00 | -0.0079 | -0.60 | 0.30% | -25.39% |
 
 ## Baseline Comparison
 
 | Strategy | Test IC | Test Sharpe | Test Max Drawdown | Test Turnover | Test Cost | Test Total Return |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| agent_signal | -0.0079 | -0.55 | -29.33% | 1.58 | 0.13% | -23.13% |
-| momentum_20d_only | -0.0437 | -0.70 | -38.71% | 1.65 | 0.14% | -32.72% |
-| low_volatility_only | -0.0288 | -1.38 | -59.41% | 0.91 | 0.08% | -55.40% |
-| reversal_5d_only | 0.0613 | 0.45 | -28.90% | 3.26 | 0.28% | 16.01% |
-| random_cross_section | -0.0001 | -0.85 | -34.56% | 3.25 | 0.28% | -26.34% |
+| agent_signal | -0.0079 | -0.29 | -28.13% | 1.62 | 0.15% | -15.17% |
+| momentum_20d_only | -0.0437 | -0.76 | -38.94% | 1.72 | 0.16% | -34.60% |
+| low_volatility_only | -0.0288 | -1.32 | -58.96% | 1.02 | 0.10% | -54.37% |
+| reversal_5d_only | 0.0613 | 0.42 | -23.45% | 3.31 | 0.30% | 14.17% |
+| random_cross_section | -0.0001 | -1.34 | -40.71% | 3.27 | 0.30% | -38.08% |
 
 ## Stress Tests
 
 | Stress Test | Test IC | Test Sharpe | Test Max Drawdown | Test Turnover | Test Cost | Test Total Return |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| sector_neutral_signal | -0.0089 | -0.41 | -27.33% | 1.47 | 0.12% | -17.29% |
-| liquidity_top_80pct | 0.0048 | -0.43 | -29.67% | 1.42 | 0.11% | -20.57% |
-| sector_neutral_liquidity_top_80pct | 0.0009 | -0.23 | -22.61% | 1.46 | 0.12% | -12.17% |
+| sector_neutral_signal | -0.0089 | -0.25 | -24.44% | 1.51 | 0.14% | -12.32% |
+| liquidity_top_80pct | 0.0048 | -0.15 | -30.15% | 1.47 | 0.13% | -11.02% |
+| sector_neutral_liquidity_top_80pct | 0.0009 | 0.06 | -22.63% | 1.51 | 0.14% | -2.17% |
 
 ## Walk-Forward Validation
 
 | Window | Train Through | Test Range | Obs | IC Mean | Sharpe | Avg Cost | Hit Rate | Total Return |
 | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| wf_01 | 2022-07-05 | 2022-07-12 to 2023-08-29 | 58 | 0.0041 | 1.05 | 0.15% | 50.00% | 30.61% |
-| wf_02 | 2023-08-29 | 2023-09-06 to 2024-10-23 | 58 | 0.0045 | -0.52 | 0.15% | 46.55% | -15.51% |
-| wf_03 | 2024-10-23 | 2024-10-30 to 2025-12-19 | 58 | -0.0009 | -0.31 | 0.13% | 48.28% | -11.23% |
+| wf_01 | 2022-07-05 | 2022-07-12 to 2023-08-29 | 58 | 0.0041 | 0.96 | 0.17% | 50.00% | 26.97% |
+| wf_02 | 2023-08-29 | 2023-09-06 to 2024-10-23 | 58 | 0.0045 | -0.63 | 0.17% | 46.55% | -18.66% |
+| wf_03 | 2024-10-23 | 2024-10-30 to 2025-12-19 | 58 | -0.0009 | -0.25 | 0.15% | 48.28% | -10.47% |
 
 | Strategy | Windows | Mean Test IC | Mean Sharpe | Mean Cost | Positive IC Windows | Median Total Return |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| agent_signal | 3 | 0.0026 | 0.07 | 0.14% | 66.67% | -11.23% |
-| momentum_20d_only | 3 | -0.0183 | -0.08 | 0.14% | 33.33% | 12.32% |
-| low_volatility_only | 3 | -0.0387 | -1.60 | 0.08% | 0.00% | -46.64% |
-| reversal_5d_only | 3 | 0.0206 | -0.55 | 0.28% | 66.67% | -8.21% |
-| random_cross_section | 3 | 0.0032 | -1.15 | 0.29% | 66.67% | -20.88% |
-| sector_neutral_signal | 3 | 0.0023 | -0.02 | 0.13% | 33.33% | -6.77% |
-| liquidity_top_80pct | 3 | 0.0086 | 0.09 | 0.12% | 66.67% | -2.05% |
-| sector_neutral_liquidity_top_80pct | 3 | 0.0009 | -0.05 | 0.12% | 66.67% | -1.06% |
+| agent_signal | 3 | 0.0026 | 0.03 | 0.16% | 66.67% | -10.47% |
+| momentum_20d_only | 3 | -0.0183 | -0.33 | 0.17% | 33.33% | -0.61% |
+| low_volatility_only | 3 | -0.0387 | -1.89 | 0.11% | 0.00% | -44.70% |
+| reversal_5d_only | 3 | 0.0206 | -0.46 | 0.31% | 66.67% | -8.45% |
+| random_cross_section | 3 | 0.0032 | -1.60 | 0.31% | 66.67% | -22.27% |
+| sector_neutral_signal | 3 | 0.0023 | -0.22 | 0.15% | 33.33% | -9.10% |
+| liquidity_top_80pct | 3 | 0.0086 | -0.01 | 0.15% | 66.67% | -2.75% |
+| sector_neutral_liquidity_top_80pct | 3 | 0.0009 | -0.23 | 0.14% | 66.67% | 1.08% |
 
 ## Interpretation
 
@@ -138,9 +172,11 @@ The signal is not supported out-of-sample in this run. Treat it as rejected unti
 
 The strongest out-of-sample Sharpe is from `reversal_5d_only`, not the agent signal. Treat this as a useful rejection/iteration signal: inspect which factor exposure is carrying the result before adding model complexity.
 
-The stress-test variants did not preserve both positive IC and positive Sharpe. The base agent test IC is -0.0079 and Sharpe is -0.55; investigate sector or liquidity dependence.
+The signal keeps positive test IC and Sharpe under these stress tests: sector_neutral_liquidity_top_80pct. Compare their drawdowns and turnover before treating this as robust.
 
 Factor diagnostics did not flag high pairwise redundancy among selected exposures.
+
+Robustness diagnostics flag caution: bootstrap Sharpe confidence is weak; bootstrap IC confidence is weak; parameter sensitivity is fragile; high-cost sensitivity erases positive Sharpe.
 
 Walk-forward validation is not yet stable enough for promotion: inspect the weak windows before adding factor complexity.
 
@@ -150,12 +186,12 @@ The train/test split is chronological. Test-period results are the primary evide
 
 - Synthetic data is useful for deterministic validation but is not investment evidence.
 - Stress tests are diagnostics; the primary portfolio remains a simple long-short ranking portfolio.
-- Transaction costs are modeled with base, spread, and participation-based impact assumptions, not broker execution data.
-- No borrow constraints, corporate actions, or survivorship controls are included yet.
+- Transaction costs and borrow costs are research approximations, not broker execution or securities-lending records.
+- No corporate actions or survivorship controls are included yet.
 
 ## Next Experiments
 
 - Run the same signal on Yahoo Finance data for a real equity universe.
 - Replace redundant factors or orthogonalize correlated exposures before combining signals.
-- Add borrow costs and shortability constraints.
+- Add point-in-time vendor data integration with survivorship-safe universes.
 - Compare this factor against pure momentum, pure low volatility, and reversal baselines.

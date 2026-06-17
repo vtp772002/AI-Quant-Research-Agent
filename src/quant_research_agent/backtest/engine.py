@@ -42,6 +42,8 @@ def run_long_short_backtest(
     spread_cost_bps: float = 0.0,
     market_impact_coefficient: float = 0.0,
     portfolio_notional: float = 1_000_000.0,
+    borrow_fee_bps: float = 0.0,
+    shortable_symbols: list[str] | None = None,
     walk_forward_windows: int = 0,
     walk_forward_min_train_fraction: float = 0.4,
 ) -> BacktestResult:
@@ -53,7 +55,7 @@ def run_long_short_backtest(
     rebalance_dates = _rebalance_dates(aligned.index.get_level_values("date").unique(), rebalance_days)
     aligned = aligned.loc[aligned.index.get_level_values("date").isin(rebalance_dates)]
 
-    positions = _build_positions(aligned["signal"], quantile=quantile)
+    positions = _build_positions(aligned["signal"], quantile=quantile, shortable_symbols=shortable_symbols)
     raw_returns = _portfolio_forward_returns(positions, aligned["forward_return"])
     turnover = _turnover(positions)
     costs = _transaction_costs(
@@ -64,6 +66,8 @@ def run_long_short_backtest(
         spread_cost_bps=spread_cost_bps,
         market_impact_coefficient=market_impact_coefficient,
         portfolio_notional=portfolio_notional,
+        borrow_fee_bps=borrow_fee_bps,
+        holding_period=holding_period,
     )
     returns = (raw_returns - costs["total_cost"]).rename("strategy_return").dropna()
 
@@ -121,7 +125,8 @@ def _rebalance_dates(dates: pd.Index, rebalance_days: int) -> pd.Index:
     return pd.Index(sorted(dates))[::rebalance_days]
 
 
-def _build_positions(signal: pd.Series, quantile: float) -> pd.DataFrame:
+def _build_positions(signal: pd.Series, quantile: float, shortable_symbols: list[str] | None = None) -> pd.DataFrame:
+    shortable = set(shortable_symbols) if shortable_symbols is not None else None
     frames = []
     for date, date_signal in signal.groupby(level="date"):
         values = date_signal.droplevel("date").dropna()
@@ -131,12 +136,14 @@ def _build_positions(signal: pd.Series, quantile: float) -> pd.DataFrame:
         short_cutoff = values.quantile(quantile)
         longs = values[values >= long_cutoff].index
         shorts = values[values <= short_cutoff].index
+        if shortable is not None:
+            shorts = shorts.intersection(pd.Index(sorted(shortable)))
+        if len(longs) == 0 or len(shorts) == 0:
+            continue
 
         weights = pd.Series(0.0, index=values.index, name=date)
-        if len(longs) > 0:
-            weights.loc[longs] = 1.0 / len(longs)
-        if len(shorts) > 0:
-            weights.loc[shorts] = -1.0 / len(shorts)
+        weights.loc[longs] = 1.0 / len(longs)
+        weights.loc[shorts] = -1.0 / len(shorts)
         frames.append(weights)
 
     if not frames:
@@ -165,6 +172,8 @@ def _transaction_costs(
     spread_cost_bps: float,
     market_impact_coefficient: float,
     portfolio_notional: float,
+    borrow_fee_bps: float,
+    holding_period: int,
 ) -> pd.DataFrame:
     close = market_data["adj_close"].unstack("symbol")
     volume = market_data["volume"].unstack("symbol")
@@ -177,6 +186,8 @@ def _transaction_costs(
     spread_cost = turnover * (spread_cost_bps / 10_000.0)
     participation = (trades * portfolio_notional) / adv_20d.replace(0, np.nan)
     impact_cost = (trades * participation.fillna(0.0) * market_impact_coefficient).sum(axis=1)
+    short_exposure = positions.clip(upper=0.0).abs().sum(axis=1)
+    borrow_cost = short_exposure * (borrow_fee_bps / 10_000.0) * (holding_period / 252.0)
     weighted_participation = (trades * participation.fillna(0.0)).sum(axis=1) / trades.sum(axis=1).replace(0, np.nan)
 
     costs = pd.DataFrame(
@@ -184,11 +195,12 @@ def _transaction_costs(
             "base_cost": base_cost,
             "spread_cost": spread_cost,
             "impact_cost": impact_cost,
+            "borrow_cost": borrow_cost,
             "average_trade_participation": weighted_participation.fillna(0.0),
             "max_trade_participation": participation.max(axis=1).fillna(0.0),
         }
     )
-    costs["total_cost"] = costs["base_cost"] + costs["spread_cost"] + costs["impact_cost"]
+    costs["total_cost"] = costs["base_cost"] + costs["spread_cost"] + costs["impact_cost"] + costs["borrow_cost"]
     costs.index.name = "date"
     return costs.fillna(0.0)
 
@@ -291,6 +303,7 @@ def _cost_metric_summary(costs: pd.DataFrame) -> dict[str, float]:
             "average_base_cost": 0.0,
             "average_spread_cost": 0.0,
             "average_impact_cost": 0.0,
+            "average_borrow_cost": 0.0,
             "cumulative_total_cost": 0.0,
             "average_trade_participation": 0.0,
             "max_trade_participation": 0.0,
@@ -300,6 +313,7 @@ def _cost_metric_summary(costs: pd.DataFrame) -> dict[str, float]:
         "average_base_cost": float(costs["base_cost"].mean()),
         "average_spread_cost": float(costs["spread_cost"].mean()),
         "average_impact_cost": float(costs["impact_cost"].mean()),
+        "average_borrow_cost": float(costs["borrow_cost"].mean()),
         "cumulative_total_cost": float(costs["total_cost"].sum()),
         "average_trade_participation": float(costs["average_trade_participation"].mean()),
         "max_trade_participation": float(costs["max_trade_participation"].max()),

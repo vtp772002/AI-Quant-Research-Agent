@@ -75,6 +75,12 @@ Real-data demo:
 python -m quant_research_agent.main --config configs/yahoo_nasdaq_demo.yaml
 ```
 
+Point-in-time universe demo:
+
+```bash
+python -m quant_research_agent.main --config configs/point_in_time_synthetic_demo.yaml
+```
+
 ## Metrics
 
 The research report includes:
@@ -92,6 +98,11 @@ The research report includes:
 - Data integrity diagnostics for source quality, panel coverage, and
   institutional-readiness assumptions.
 - Base, spread, and liquidity-sensitive market-impact transaction costs.
+- Borrow fee and shortability constraints for short-leg feasibility.
+- Point-in-time CSV universe membership adapter for survivorship-safe research
+  interfaces.
+- Bootstrap confidence intervals, parameter sensitivity grids, and cost
+  sensitivity diagnostics for overfit and robustness review.
 
 ## Validation
 
@@ -105,13 +116,14 @@ python -m quant_research_agent.main --config configs/base.yaml --json
 - Synthetic data validates mechanics but is not investment evidence.
 - Yahoo Finance is a convenient demo source, not an institutional data source;
   reports flag this explicitly in the data integrity section.
-- v1 has diagnostic neutralization, liquidity stress tests, and a
-  liquidity-sensitive transaction cost model, but no borrow constraints,
-  survivorship-safe vendor integration, or broker-grade execution simulator.
+- v1 has diagnostic neutralization, liquidity stress tests, robustness checks,
+  and a liquidity-sensitive transaction cost model plus borrow constraints, but
+  no vendor API integration, locate record ingestion, or broker-grade execution
+  simulator.
 
 ## Next Steps
 
-- Add borrow costs and shortability constraints.
-- Add point-in-time vendor data integration with survivorship-safe universes.
+- Add direct vendor data integration behind the point-in-time universe adapter.
+- Add locate/borrow availability history from a securities-lending source.
 - Add paper-to-alpha extraction that turns quant papers/blogs into experiment
   templates.

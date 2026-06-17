@@ -35,6 +35,8 @@ class ReportAgent:
                 f"- Holding period: {config.experiment.backtest.holding_period} trading days",
                 f"- Rebalance: every {config.experiment.backtest.rebalance_days} trading days",
                 f"- Long/short quantile: {config.experiment.backtest.quantile:.0%}",
+                f"- Borrow fee: {config.experiment.shorting.borrow_fee_bps:.1f} bps annualized",
+                f"- Shortable universe: {_shortable_summary(config)}",
                 "",
                 "## Data Integrity",
                 "",
@@ -78,6 +80,14 @@ class ReportAgent:
                 "",
                 _execution_cost_table(result),
                 "",
+                "## Robustness Diagnostics",
+                "",
+                _bootstrap_table(result),
+                "",
+                _sensitivity_table("Parameter Sensitivity", result.robustness.parameter_sensitivity),
+                "",
+                _sensitivity_table("Cost Sensitivity", result.robustness.cost_sensitivity),
+                "",
                 "## Baseline Comparison",
                 "",
                 _baseline_table(result),
@@ -102,6 +112,8 @@ class ReportAgent:
                 "",
                 _factor_diagnostics_interpretation(result),
                 "",
+                _robustness_interpretation(result),
+                "",
                 _walk_forward_interpretation(result),
                 "",
                 "The train/test split is chronological. Test-period results are the primary evidence because they are less exposed to factor selection bias.",
@@ -110,14 +122,14 @@ class ReportAgent:
                 "",
                 "- Synthetic data is useful for deterministic validation but is not investment evidence.",
                 "- Stress tests are diagnostics; the primary portfolio remains a simple long-short ranking portfolio.",
-                "- Transaction costs are modeled with base, spread, and participation-based impact assumptions, not broker execution data.",
-                "- No borrow constraints, corporate actions, or survivorship controls are included yet.",
+                "- Transaction costs and borrow costs are research approximations, not broker execution or securities-lending records.",
+                "- No corporate actions or survivorship controls are included yet.",
                 "",
                 "## Next Experiments",
                 "",
                 "- Run the same signal on Yahoo Finance data for a real equity universe.",
                 "- Replace redundant factors or orthogonalize correlated exposures before combining signals.",
-                "- Add borrow costs and shortability constraints.",
+                "- Add point-in-time vendor data integration with survivorship-safe universes.",
                 "- Compare this factor against pure momentum, pure low volatility, and reversal baselines.",
                 "",
             ]
@@ -131,7 +143,7 @@ def write_experiment_row(result: ResearchRunResult, config: AppConfig) -> Path:
         experiment=config.experiment.name,
         strategy="agent_signal",
         source=config.data.source,
-        universe_size=len(config.data.universe),
+        universe_size=len(result.universe.symbols),
         backtest=result.backtest,
     )
     for name, backtest in result.baselines.items():
@@ -140,7 +152,7 @@ def write_experiment_row(result: ResearchRunResult, config: AppConfig) -> Path:
                 experiment=config.experiment.name,
                 strategy=name,
                 source=config.data.source,
-                universe_size=len(config.data.universe),
+                universe_size=len(result.universe.symbols),
                 backtest=backtest,
             )
         )
@@ -150,7 +162,7 @@ def write_experiment_row(result: ResearchRunResult, config: AppConfig) -> Path:
                 experiment=config.experiment.name,
                 strategy=name,
                 source=config.data.source,
-                universe_size=len(config.data.universe),
+                universe_size=len(result.universe.symbols),
                 backtest=backtest,
             )
         )
@@ -251,6 +263,7 @@ def _execution_cost_table(result: ResearchRunResult) -> str:
         "average_base_cost": "Avg base cost",
         "average_spread_cost": "Avg spread cost",
         "average_impact_cost": "Avg impact cost",
+        "average_borrow_cost": "Avg borrow cost",
         "average_total_cost": "Avg total cost",
         "cumulative_total_cost": "Cumulative cost",
         "average_trade_participation": "Avg trade participation",
@@ -268,11 +281,61 @@ def _execution_cost_table(result: ResearchRunResult) -> str:
     return "\n".join(rows)
 
 
+def _bootstrap_table(result: ResearchRunResult) -> str:
+    bootstrap = result.robustness.bootstrap
+    if bootstrap is None:
+        return "Bootstrap robustness diagnostics are not configured or lack enough test observations."
+    return "\n".join(
+        [
+            "| Metric | Mean | 2.5% | 97.5% | Positive Probability |",
+            "| --- | ---: | ---: | ---: | ---: |",
+            "| Test Sharpe | {mean:.2f} | {low:.2f} | {high:.2f} | {prob:.2%} |".format(
+                mean=bootstrap.sharpe_mean,
+                low=bootstrap.sharpe_ci_low,
+                high=bootstrap.sharpe_ci_high,
+                prob=bootstrap.positive_sharpe_probability,
+            ),
+            "| Test IC | {mean:.4f} | {low:.4f} | {high:.4f} | {prob:.2%} |".format(
+                mean=bootstrap.ic_mean,
+                low=bootstrap.ic_ci_low,
+                high=bootstrap.ic_ci_high,
+                prob=bootstrap.positive_ic_probability,
+            ),
+        ]
+    )
+
+
+def _sensitivity_table(title: str, rows_data) -> str:
+    if not rows_data:
+        return f"{title} is not configured."
+
+    rows = [
+        f"{title}:",
+        "",
+        "| Variant | Holding | Quantile | Cost Mult | Test IC | Test Sharpe | Test Cost | Test Return |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+    ]
+    for item in rows_data:
+        metrics = item.metrics
+        rows.append(
+            "| {name} | {holding} | {quantile:.0%} | {cost_multiplier:.2f} | {ic_mean:.4f} | {sharpe:.2f} | {average_total_cost:.2%} | {total_return:.2%} |".format(
+                name=item.name,
+                holding=item.holding_period,
+                quantile=item.quantile,
+                cost_multiplier=item.cost_multiplier,
+                **metrics,
+            )
+        )
+    return "\n".join(rows)
+
+
 def _data_integrity_summary(result: ResearchRunResult) -> str:
     report = result.data_integrity
     return "\n".join(
         [
             f"- Source: `{report.source}`",
+            f"- Universe source: `{result.universe.source}`",
+            f"- Membership rows: {len(result.universe.membership)}",
             f"- Requested symbols: {len(report.requested_symbols)}",
             f"- Observed symbols: {len(report.observed_symbols)}",
             f"- Date rows: {report.date_count}",
@@ -462,6 +525,28 @@ def _factor_diagnostics_interpretation(result: ResearchRunResult) -> str:
     )
 
 
+def _robustness_interpretation(result: ResearchRunResult) -> str:
+    bootstrap = result.robustness.bootstrap
+    weak_points = []
+    if bootstrap is not None:
+        if bootstrap.positive_sharpe_probability < 0.6:
+            weak_points.append("bootstrap Sharpe confidence is weak")
+        if bootstrap.positive_ic_probability < 0.6:
+            weak_points.append("bootstrap IC confidence is weak")
+    if result.robustness.parameter_sensitivity:
+        positive_sharpe = sum(item.metrics["sharpe"] > 0 for item in result.robustness.parameter_sensitivity)
+        if positive_sharpe / len(result.robustness.parameter_sensitivity) < 0.5:
+            weak_points.append("parameter sensitivity is fragile")
+    if result.robustness.cost_sensitivity:
+        high_cost = result.robustness.cost_sensitivity[-1]
+        if high_cost.metrics["sharpe"] <= 0:
+            weak_points.append("high-cost sensitivity erases positive Sharpe")
+
+    if not weak_points:
+        return "Robustness diagnostics do not flag a major overfit warning under the configured bootstrap and sensitivity checks."
+    return "Robustness diagnostics flag caution: " + "; ".join(weak_points) + "."
+
+
 def _walk_forward_agent_table(backtest: BacktestResult) -> str:
     if not backtest.walk_forward:
         return "Walk-forward validation is not configured for this experiment."
@@ -538,3 +623,10 @@ def _date_text(value: pd.Timestamp) -> str:
 
 def _yes_no(value: bool) -> str:
     return "yes" if value else "no"
+
+
+def _shortable_summary(config: AppConfig) -> str:
+    shortable = config.experiment.shorting.shortable_symbols
+    if shortable is None:
+        return "all configured symbols"
+    return f"{len(shortable)} configured symbols"

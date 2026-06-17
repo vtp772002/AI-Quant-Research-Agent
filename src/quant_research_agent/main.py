@@ -24,7 +24,9 @@ def main(argv: list[str] | None = None) -> int:
         "experiment": config.experiment.name,
         "report_path": str(report_path),
         "experiments_path": str(experiments_path),
+        "universe": _universe_payload(result),
         "data_integrity": _data_integrity_payload(result),
+        "shorting": _shorting_payload(config),
         "metrics": result.backtest.metrics,
         "baselines": {
             name: backtest.metrics for name, backtest in result.baselines.items()
@@ -44,6 +46,7 @@ def main(argv: list[str] | None = None) -> int:
             },
         },
         "factor_diagnostics": _factor_diagnostics_payload(result),
+        "robustness": _robustness_payload(result),
     }
     if args.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
@@ -129,6 +132,59 @@ def _data_integrity_payload(result) -> dict[str, object]:
             for item in report.quality_by_symbol
         ],
         "warnings": report.warnings,
+    }
+
+
+def _universe_payload(result) -> dict[str, object]:
+    return {
+        "source": result.universe.source,
+        "symbols": result.universe.symbols,
+        "symbol_count": len(result.universe.symbols),
+        "membership_rows": len(result.universe.membership),
+        "point_in_time": result.universe.point_in_time,
+        "survivorship_bias_free": result.universe.survivorship_bias_free,
+        "warnings": result.universe.warnings,
+    }
+
+
+def _shorting_payload(config) -> dict[str, object]:
+    shortable = config.experiment.shorting.shortable_symbols
+    return {
+        "borrow_fee_bps": config.experiment.shorting.borrow_fee_bps,
+        "shortable_symbols": shortable,
+        "shortable_symbol_count": len(shortable) if shortable is not None else len(config.data.universe),
+    }
+
+
+def _robustness_payload(result) -> dict[str, object]:
+    bootstrap = result.robustness.bootstrap
+    return {
+        "bootstrap": None
+        if bootstrap is None
+        else {
+            "iterations": bootstrap.iterations,
+            "seed": bootstrap.seed,
+            "sharpe_mean": bootstrap.sharpe_mean,
+            "sharpe_ci_low": bootstrap.sharpe_ci_low,
+            "sharpe_ci_high": bootstrap.sharpe_ci_high,
+            "ic_mean": bootstrap.ic_mean,
+            "ic_ci_low": bootstrap.ic_ci_low,
+            "ic_ci_high": bootstrap.ic_ci_high,
+            "positive_sharpe_probability": bootstrap.positive_sharpe_probability,
+            "positive_ic_probability": bootstrap.positive_ic_probability,
+        },
+        "parameter_sensitivity": [_sensitivity_payload(item) for item in result.robustness.parameter_sensitivity],
+        "cost_sensitivity": [_sensitivity_payload(item) for item in result.robustness.cost_sensitivity],
+    }
+
+
+def _sensitivity_payload(item) -> dict[str, object]:
+    return {
+        "name": item.name,
+        "holding_period": item.holding_period,
+        "quantile": item.quantile,
+        "cost_multiplier": item.cost_multiplier,
+        "metrics": item.metrics,
     }
 
 

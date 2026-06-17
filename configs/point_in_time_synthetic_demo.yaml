@@ -1,31 +1,13 @@
 data:
-  source: yahoo
-  universe:
-    - AAPL
-    - MSFT
-    - NVDA
-    - AMZN
-    - META
-    - GOOGL
-    - AVGO
-    - COST
-    - TSLA
-    - NFLX
-    - AMD
-    - ADBE
-    - CSCO
-    - QCOM
-    - TXN
-    - INTU
-    - AMAT
-    - HON
-    - SBUX
-    - BKNG
+  source: synthetic
+  universe_provider:
+    kind: csv
+    path: universe_membership_demo.csv
   start: "2020-01-01"
-  end: "2025-12-31"
+  end: "2024-12-31"
   seed: 42
-  point_in_time_universe: false
-  survivorship_bias_free: false
+  point_in_time_universe: true
+  survivorship_bias_free: true
   corporate_actions_adjusted: false
   sectors:
     AAPL: technology
@@ -50,7 +32,7 @@ data:
     BKNG: consumer_discretionary
 
 experiment:
-  name: yahoo_nasdaq_momentum_low_volatility
+  name: point_in_time_synthetic_momentum_low_volatility
   train_fraction: 0.7
   signal:
     positive_factors:
@@ -124,5 +106,5 @@ experiment:
       negative_factors: []
 
 report:
-  output_path: reports/yahoo_nasdaq_research_report.md
+  output_path: reports/point_in_time_synthetic_research_report.md
   experiments_path: results/experiments.csv

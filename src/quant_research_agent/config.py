@@ -1,10 +1,16 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+
+@dataclass(frozen=True)
+class UniverseProviderConfig:
+    kind: str = "static"
+    path: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -14,6 +20,7 @@ class DataConfig:
     start: str
     end: str
     seed: int = 42
+    universe_provider: UniverseProviderConfig = field(default_factory=UniverseProviderConfig)
     sectors: dict[str, str] | None = None
     point_in_time_universe: bool = False
     survivorship_bias_free: bool = False
@@ -75,6 +82,21 @@ class StressTestConfig:
 
 
 @dataclass(frozen=True)
+class ShortingConfig:
+    borrow_fee_bps: float = 0.0
+    shortable_symbols: list[str] | None = None
+
+
+@dataclass(frozen=True)
+class RobustnessConfig:
+    bootstrap_iterations: int = 0
+    bootstrap_seed: int = 123
+    holding_periods: list[int] = field(default_factory=list)
+    quantiles: list[float] = field(default_factory=list)
+    cost_multipliers: list[float] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
 class ExperimentConfig:
     name: str
     train_fraction: float
@@ -83,6 +105,8 @@ class ExperimentConfig:
     baselines: list[BaselineConfig]
     validation: ValidationConfig
     stress_tests: StressTestConfig
+    shorting: ShortingConfig
+    robustness: RobustnessConfig
 
 
 @dataclass(frozen=True)
@@ -99,11 +123,12 @@ class AppConfig:
 
 
 def load_config(path: str | Path) -> AppConfig:
-    raw = yaml.safe_load(Path(path).read_text()) or {}
-    return parse_config(raw)
+    config_path = Path(path)
+    raw = yaml.safe_load(config_path.read_text()) or {}
+    return parse_config(raw, base_dir=config_path.parent)
 
 
-def parse_config(raw: dict[str, Any]) -> AppConfig:
+def parse_config(raw: dict[str, Any], base_dir: str | Path | None = None) -> AppConfig:
     data = raw["data"]
     experiment = raw["experiment"]
     signal = experiment["signal"]
@@ -111,9 +136,12 @@ def parse_config(raw: dict[str, Any]) -> AppConfig:
     validation = experiment.get("validation", {})
     walk_forward = validation.get("walk_forward", {}) or {}
     stress_tests = experiment.get("stress_tests", {}) or {}
+    shorting = experiment.get("shorting", {}) or {}
+    robustness = experiment.get("robustness", {}) or {}
     neutralization = stress_tests.get("neutralization", {}) or {}
     liquidity = stress_tests.get("liquidity", {}) or {}
     report = raw["report"]
+    base_path = Path(base_dir) if base_dir is not None else Path.cwd()
 
     train_fraction = float(experiment.get("train_fraction", 0.7))
     if not 0.1 <= train_fraction <= 0.9:
@@ -155,6 +183,46 @@ def parse_config(raw: dict[str, Any]) -> AppConfig:
     if not 0.0 <= min_dollar_volume_rank < 1.0:
         raise ValueError("experiment.stress_tests.liquidity.min_dollar_volume_rank must be between 0 and 1")
 
+    borrow_fee_bps = float(shorting.get("borrow_fee_bps", 0.0))
+    if borrow_fee_bps < 0.0:
+        raise ValueError("experiment.shorting.borrow_fee_bps must be non-negative")
+
+    shortable_symbols = shorting.get("shortable_symbols")
+    parsed_shortable_symbols = None
+    if shortable_symbols is not None:
+        parsed_shortable_symbols = [str(symbol).upper() for symbol in shortable_symbols]
+        configured_universe = {str(symbol).upper() for symbol in data.get("universe", [])}
+        unknown_shortable = set(parsed_shortable_symbols) - configured_universe if configured_universe else set()
+        if unknown_shortable:
+            raise ValueError(f"experiment.shorting.shortable_symbols contains unknown symbols: {sorted(unknown_shortable)}")
+
+    universe_provider = data.get("universe_provider", {}) or {}
+    universe_provider_kind = str(universe_provider.get("kind", "static"))
+    universe_provider_path = universe_provider.get("path")
+    parsed_universe_provider_path = None
+    if universe_provider_path is not None:
+        parsed_universe_provider_path = Path(str(universe_provider_path))
+        if not parsed_universe_provider_path.is_absolute():
+            parsed_universe_provider_path = base_path / parsed_universe_provider_path
+    if universe_provider_kind == "static" and not data.get("universe"):
+        raise ValueError("data.universe is required when data.universe_provider.kind is static")
+
+    bootstrap_iterations = int(robustness.get("bootstrap_iterations", 0))
+    if bootstrap_iterations < 0:
+        raise ValueError("experiment.robustness.bootstrap_iterations must be non-negative")
+
+    holding_periods = [int(value) for value in robustness.get("holding_periods", [])]
+    if any(value <= 0 for value in holding_periods):
+        raise ValueError("experiment.robustness.holding_periods must contain positive integers")
+
+    robustness_quantiles = [float(value) for value in robustness.get("quantiles", [])]
+    if any(value <= 0.0 or value >= 0.5 for value in robustness_quantiles):
+        raise ValueError("experiment.robustness.quantiles must be between 0 and 0.5")
+
+    cost_multipliers = [float(value) for value in robustness.get("cost_multipliers", [])]
+    if any(value < 0.0 for value in cost_multipliers):
+        raise ValueError("experiment.robustness.cost_multipliers must be non-negative")
+
     sectors = data.get("sectors")
     parsed_sectors = None
     if sectors:
@@ -163,10 +231,14 @@ def parse_config(raw: dict[str, Any]) -> AppConfig:
     return AppConfig(
         data=DataConfig(
             source=str(data.get("source", "synthetic")),
-            universe=[str(symbol).upper() for symbol in data["universe"]],
+            universe=[str(symbol).upper() for symbol in data.get("universe", [])],
             start=str(data["start"]),
             end=str(data["end"]),
             seed=int(data.get("seed", 42)),
+            universe_provider=UniverseProviderConfig(
+                kind=universe_provider_kind,
+                path=parsed_universe_provider_path,
+            ),
             sectors=parsed_sectors,
             point_in_time_universe=bool(data.get("point_in_time_universe", False)),
             survivorship_bias_free=bool(data.get("survivorship_bias_free", False)),
@@ -212,6 +284,17 @@ def parse_config(raw: dict[str, Any]) -> AppConfig:
                     enabled=bool(liquidity.get("enabled", False)),
                     min_dollar_volume_rank=min_dollar_volume_rank,
                 ),
+            ),
+            shorting=ShortingConfig(
+                borrow_fee_bps=borrow_fee_bps,
+                shortable_symbols=parsed_shortable_symbols,
+            ),
+            robustness=RobustnessConfig(
+                bootstrap_iterations=bootstrap_iterations,
+                bootstrap_seed=int(robustness.get("bootstrap_seed", 123)),
+                holding_periods=holding_periods,
+                quantiles=robustness_quantiles,
+                cost_multipliers=cost_multipliers,
             ),
         ),
         report=ReportConfig(

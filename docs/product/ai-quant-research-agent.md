@@ -36,10 +36,13 @@ python -m src.main --config configs/base.yaml
 10. Stress-test the agent signal with configured neutralization and liquidity
    constraints.
 11. Apply base, spread, and liquidity-sensitive market-impact transaction
-   costs.
-12. Calculate IC, Sharpe ratio, max drawdown, turnover, costs, and total
-   return.
-13. Write a Markdown research report and append experiment metrics.
+   costs plus borrow costs for short exposure.
+12. Enforce configured shortability constraints on the short leg.
+13. Run configured bootstrap, parameter sensitivity, and cost sensitivity
+   robustness diagnostics.
+14. Calculate IC, Sharpe ratio, max drawdown, turnover, costs, borrow drag, and
+   total return.
+15. Write a Markdown research report and append experiment metrics.
 
 ## Data Contract
 
@@ -60,11 +63,22 @@ The Yahoo demo configuration is `configs/yahoo_nasdaq_demo.yaml`. It is intended
 for exploratory real-data runs and may fail when the external data provider is
 unavailable.
 
+The point-in-time synthetic demo configuration is
+`configs/point_in_time_synthetic_demo.yaml`. It uses
+`configs/universe_membership_demo.csv` to resolve active universe membership by
+date and mask market data outside each symbol's membership interval.
+
 Data integrity diagnostics report requested versus observed symbols, row and
 date counts, per-symbol coverage, duplicate index rows, non-positive prices or
 volume, stale adjusted closes, extreme adjusted returns, and explicit warnings
 when data is not marked point-in-time, survivorship-bias-free, or
 institutional-grade for corporate actions.
+
+Universe membership can be static or supplied by a CSV provider with
+`symbol,start,end` columns. CSV membership is treated as the point-in-time
+adapter surface: it resolves symbols for the experiment date range and removes
+rows outside each symbol's membership interval before factors and backtests are
+computed.
 
 ## Methodology
 
@@ -99,6 +113,19 @@ size as a fraction of rolling 20-day average dollar volume using the configured
 portfolio notional and impact coefficient. Reports include average base,
 spread, impact, total cost, and trade participation diagnostics.
 
+Shorting controls can specify an annualized borrow fee and a set of symbols
+eligible for the short leg. If a shortable universe is configured, portfolio
+construction excludes non-shortable symbols from short candidates. Borrow cost
+is charged on short exposure for the configured holding period.
+
+Robustness diagnostics are optional post-backtest checks. Bootstrap resampling
+estimates confidence intervals and positive-result probabilities for test
+Sharpe and test IC. Parameter sensitivity reruns the backtest across configured
+holding-period and quantile grids. Cost sensitivity reruns the same signal with
+configured transaction-cost and borrow-cost multipliers. These diagnostics do
+not prove investment merit, but they make overfit and fragility visible in the
+report and CLI JSON.
+
 ## Limitations
 
 - Synthetic data validates mechanics, not investment merit.
@@ -108,7 +135,9 @@ spread, impact, total cost, and trade participation diagnostics.
   survivorship-safe data by themselves.
 - Walk-forward validation tests temporal stability but does not remove the need
   for better data controls and independent hypothesis review.
-- v1 includes a liquidity-sensitive transaction cost model, but it is still a
-  research approximation and does not replace broker execution data, venue
-  routing analysis, borrow constraints, survivorship controls, or a full
-  production execution simulator.
+- v1 includes liquidity-sensitive transaction costs, borrow fees, shortability
+  constraints, robustness diagnostics, and a CSV point-in-time universe adapter,
+  but these remain research approximations and do not replace broker execution
+  data, locate records, vendor market data APIs, venue routing analysis,
+  independent alpha review, multiple-hypothesis controls, or a full production
+  execution simulator.

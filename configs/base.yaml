@@ -79,6 +79,33 @@ experiment:
     liquidity:
       enabled: true
       min_dollar_volume_rank: 0.2
+  shorting:
+    borrow_fee_bps: 75.0
+    shortable_symbols:
+      - AAPL
+      - MSFT
+      - NVDA
+      - AMZN
+      - META
+      - GOOGL
+      - AVGO
+      - COST
+      - NFLX
+      - AMD
+      - ADBE
+      - CSCO
+      - QCOM
+      - TXN
+      - INTU
+      - AMAT
+      - HON
+      - SBUX
+  robustness:
+    bootstrap_iterations: 200
+    bootstrap_seed: 123
+    holding_periods: [3, 5, 10]
+    quantiles: [0.15, 0.2, 0.3]
+    cost_multipliers: [0.5, 1.0, 2.0]
   baselines:
     - name: momentum_20d_only
       positive_factors:
