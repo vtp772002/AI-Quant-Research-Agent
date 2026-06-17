@@ -15,7 +15,7 @@ try:
 except ImportError as exc:  # pragma: no cover - exercised only in minimal installs.
     raise RuntimeError("FastAPI service requires installing the service extra: pip install -e '.[service]'") from exc
 
-from quant_research_agent.api_auth import require_role
+from quant_research_agent.api_auth import request_auth_audit, require_role
 from quant_research_agent.config import load_config
 from quant_research_agent.experiment_registry import get_run, list_runs, record_to_dict
 from quant_research_agent.signals import generate_signal_as_of, signal_result_to_dict
@@ -49,20 +49,7 @@ def create_app() -> FastAPI:
             return response
         finally:
             duration_ms = round((perf_counter() - start) * 1000.0, 3)
-            LOGGER.info(
-                json.dumps(
-                    {
-                        "timestamp": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                        "level": "INFO",
-                        "request_id": request_id,
-                        "action": f"{request.method} {request.url.path}",
-                        "duration_ms": duration_ms,
-                        "status_code": status_code,
-                        "message": "request completed",
-                    },
-                    sort_keys=True,
-                )
-            )
+            LOGGER.info(json.dumps(_request_log_payload(request, request_id, duration_ms, status_code), sort_keys=True))
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -135,6 +122,19 @@ app = create_app()
 
 def _registry_path(value: str | None = None) -> Path:
     return Path(value or os.getenv("AIQRA_EXPERIMENT_REGISTRY", "results/experiments.sqlite"))
+
+
+def _request_log_payload(request: Request, request_id: str, duration_ms: float, status_code: int) -> dict[str, object]:
+    return {
+        "timestamp": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "level": "INFO",
+        "request_id": request_id,
+        "action": f"{request.method} {request.url.path}",
+        "duration_ms": duration_ms,
+        "status_code": status_code,
+        "message": "request completed",
+        **request_auth_audit(request),
+    }
 
 
 def main() -> None:

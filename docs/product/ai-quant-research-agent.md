@@ -35,7 +35,9 @@ The internal API keeps `/health` public for deployment checks. All other routes
 require `X-API-Key`; keys are configured with `AIQRA_API_KEYS` as comma-separated
 `key:viewer|researcher|operator` entries. Viewer keys can read metrics, runs,
 reports, and signals. Researcher and operator keys include viewer permissions;
-experiment execution requires at least researcher.
+experiment execution requires at least researcher. Request logs include
+sanitized API key id, role, required role, auth-required flag, and auth result;
+raw API keys are not logged.
 
 ## Core Workflow
 
@@ -84,6 +86,8 @@ experiment execution requires at least researcher.
 28. Persist an append-only review audit ledger for generated idea creation,
     status changes, and run marking.
 29. Protect non-health internal API routes with API keys and role-scoped access.
+30. Emit API request logs with sanitized authenticated actor and authorization
+    result context.
 
 ## Data Contract
 

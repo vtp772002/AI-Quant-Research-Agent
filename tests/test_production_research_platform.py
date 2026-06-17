@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
+from types import SimpleNamespace
 
 from fastapi import HTTPException
 
-from quant_research_agent.api import create_app
+from quant_research_agent.api import _request_log_payload, create_app
 from quant_research_agent.api_auth import clear_auth_cache, parse_api_keys, require_role
 from quant_research_agent.config import parse_config
 from quant_research_agent.experiment_registry import get_run, list_runs, record_run
@@ -87,20 +89,20 @@ def test_api_requires_key_for_non_health_routes(monkeypatch):
     viewer_dependency = require_role("viewer")
 
     with pytest_http_exception(503, "not configured"):
-        viewer_dependency()
+        viewer_dependency(_request())
 
     monkeypatch.setenv("AIQRA_API_KEYS", "viewer-secret:viewer")
     clear_auth_cache()
 
     with pytest_http_exception(401, "missing API key"):
-        viewer_dependency()
+        viewer_dependency(_request())
     with pytest_http_exception(401, "invalid API key"):
-        viewer_dependency("wrong")
+        viewer_dependency(_request(), "wrong")
 
     monkeypatch.setenv("AIQRA_API_KEYS", "broken:admin")
     clear_auth_cache()
     with pytest_http_exception(503, "misconfigured"):
-        viewer_dependency("broken")
+        viewer_dependency(_request(), "broken")
 
 
 def test_api_roles_scope_read_and_run_access(monkeypatch, tmp_path: Path):
@@ -114,10 +116,10 @@ def test_api_roles_scope_read_and_run_access(monkeypatch, tmp_path: Path):
     viewer_dependency = require_role("viewer")
     researcher_dependency = require_role("researcher")
 
-    assert viewer_dependency("viewer-secret").role == "viewer"
+    assert viewer_dependency(_request(), "viewer-secret").role == "viewer"
     with pytest_http_exception(403, "requires researcher role"):
-        researcher_dependency("viewer-secret")
-    assert researcher_dependency("research-secret").role == "researcher"
+        researcher_dependency(_request(), "viewer-secret")
+    assert researcher_dependency(_request(), "research-secret").role == "researcher"
 
     signal = signal_endpoint(config_path=str(config_path), date="2020-06-30")
     run = run_endpoint(type("Request", (), {"config_path": str(config_path)})())
@@ -137,6 +139,52 @@ def test_api_route_metadata_protects_non_health_routes():
     assert _route_dependencies(app, "/reports/{run_id}") == 1
     assert _route_dependencies(app, "/signals/latest") == 1
     assert _route_dependencies(app, "/signals/as-of") == 1
+
+
+def test_api_request_logs_include_sanitized_auth_context(monkeypatch):
+    monkeypatch.setenv("AIQRA_API_KEYS", "viewer-secret:viewer")
+    clear_auth_cache()
+    viewer_dependency = require_role("viewer")
+    request = _request(path="/metrics")
+
+    viewer_dependency(request, "viewer-secret")
+    payload = _request_log_payload(request, request_id="req-123", duration_ms=1.5, status_code=200)
+    rendered = json.dumps(payload, sort_keys=True)
+
+    assert payload["auth_required"] is True
+    assert payload["auth_result"] == "ok"
+    assert payload["required_role"] == "viewer"
+    assert payload["role"] == "viewer"
+    assert payload["api_key_id"] == "view...cret"
+    assert "viewer-secret" not in rendered
+
+
+def test_api_request_logs_auth_failure_without_raw_key(monkeypatch):
+    monkeypatch.setenv("AIQRA_API_KEYS", "viewer-secret:viewer")
+    clear_auth_cache()
+    viewer_dependency = require_role("viewer")
+    request = _request(path="/metrics")
+
+    with pytest_http_exception(401, "invalid API key"):
+        viewer_dependency(request, "wrong-secret")
+    payload = _request_log_payload(request, request_id="req-124", duration_ms=1.5, status_code=401)
+    rendered = json.dumps(payload, sort_keys=True)
+
+    assert payload["auth_required"] is True
+    assert payload["auth_result"] == "invalid_key"
+    assert payload["required_role"] == "viewer"
+    assert payload["api_key_id"] is None
+    assert payload["role"] is None
+    assert "wrong-secret" not in rendered
+
+
+def test_api_request_logs_public_health_as_not_required():
+    payload = _request_log_payload(_request(path="/health"), request_id="req-125", duration_ms=0.5, status_code=200)
+
+    assert payload["auth_required"] is False
+    assert payload["auth_result"] == "not_required"
+    assert payload["api_key_id"] is None
+    assert payload["role"] is None
 
 
 class pytest_http_exception:
@@ -162,6 +210,14 @@ def _endpoint(app, path: str):
         if getattr(route, "path", None) == path:
             return route.endpoint
     raise AssertionError(f"route not found: {path}")
+
+
+def _request(path: str = "/metrics", method: str = "GET"):
+    return SimpleNamespace(
+        method=method,
+        url=SimpleNamespace(path=path),
+        state=SimpleNamespace(),
+    )
 
 
 def _route_dependencies(app, path: str) -> int:

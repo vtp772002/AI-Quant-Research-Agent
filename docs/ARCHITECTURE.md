@@ -34,7 +34,7 @@ quant_research_agent.workflow
   CLI/API orchestration boundary
 
 quant_research_agent.api_auth
-  API key parsing, role hierarchy, and FastAPI authorization dependencies
+  API key parsing, role hierarchy, FastAPI authorization dependencies, and sanitized request auth context
 
 quant_research_agent.experiment_registry
   local durable run registry
@@ -165,6 +165,9 @@ The future server should emit one canonical JSON log line per request with:
 - level
 - request_id
 - user_id when known
+- api_key_id when authenticated through the API key boundary
+- role when authenticated through the API key boundary
+- auth_required, auth_result, and required_role for API access decisions
 - action
 - duration_ms
 - status_code

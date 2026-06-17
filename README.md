@@ -53,7 +53,9 @@ curl -H "X-API-Key: local-viewer-change-me" "http://127.0.0.1:8000/signals/as-of
 All non-health API routes require `X-API-Key`. Configure keys with
 `AIQRA_API_KEYS` as comma-separated `key:role` entries. Roles are `viewer`,
 `researcher`, and `operator`; `researcher` and `operator` include viewer
-permissions, and experiment execution requires at least `researcher`.
+permissions, and experiment execution requires at least `researcher`. Request
+logs include sanitized `api_key_id`, `role`, `auth_required`, `auth_result`, and
+`required_role`; raw API keys are never logged.
 
 Compare generated runs:
 
@@ -224,6 +226,8 @@ The research report includes:
   rejection, archival, and run marking.
 - API key authentication and role-scoped access for the internal FastAPI
   service, keeping `/health` public and protecting research routes.
+- Authenticated API request log context with sanitized API key ids, roles, and
+  auth results.
 
 ## Validation
 
@@ -278,7 +282,7 @@ Deferred until separate stories:
 
 ## Next Steps
 
-- Add request audit logs with authenticated API actor ids.
+- Add review queue and audit API endpoints behind the existing API role boundary.
 - Add a live LLM provider adapter after prompt/versioning, credentials, and
   review requirements are specified.
 - Add reviewed prompt templates and provider-specific adapters after the
