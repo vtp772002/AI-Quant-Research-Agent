@@ -28,11 +28,18 @@ def main(argv: list[str] | None = None) -> int:
         "baselines": {
             name: backtest.metrics for name, backtest in result.baselines.items()
         },
+        "stress_tests": {
+            name: backtest.metrics for name, backtest in result.stress_tests.items()
+        },
         "walk_forward": {
             "agent_signal": _walk_forward_payload(result.backtest),
             **{
                 name: _walk_forward_payload(backtest)
                 for name, backtest in result.baselines.items()
+            },
+            **{
+                name: _walk_forward_payload(backtest)
+                for name, backtest in result.stress_tests.items()
             },
         },
         "factor_diagnostics": _factor_diagnostics_payload(result),

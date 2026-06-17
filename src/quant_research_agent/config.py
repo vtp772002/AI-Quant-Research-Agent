@@ -14,6 +14,7 @@ class DataConfig:
     start: str
     end: str
     seed: int = 42
+    sectors: dict[str, str] | None = None
 
 
 @dataclass(frozen=True)
@@ -50,6 +51,24 @@ class ValidationConfig:
 
 
 @dataclass(frozen=True)
+class NeutralizationConfig:
+    enabled: bool = False
+    group_by: str = "sector"
+
+
+@dataclass(frozen=True)
+class LiquidityStressConfig:
+    enabled: bool = False
+    min_dollar_volume_rank: float = 0.0
+
+
+@dataclass(frozen=True)
+class StressTestConfig:
+    neutralization: NeutralizationConfig
+    liquidity: LiquidityStressConfig
+
+
+@dataclass(frozen=True)
 class ExperimentConfig:
     name: str
     train_fraction: float
@@ -57,6 +76,7 @@ class ExperimentConfig:
     backtest: BacktestConfig
     baselines: list[BaselineConfig]
     validation: ValidationConfig
+    stress_tests: StressTestConfig
 
 
 @dataclass(frozen=True)
@@ -84,6 +104,9 @@ def parse_config(raw: dict[str, Any]) -> AppConfig:
     backtest = experiment["backtest"]
     validation = experiment.get("validation", {})
     walk_forward = validation.get("walk_forward", {}) or {}
+    stress_tests = experiment.get("stress_tests", {}) or {}
+    neutralization = stress_tests.get("neutralization", {}) or {}
+    liquidity = stress_tests.get("liquidity", {}) or {}
     report = raw["report"]
 
     train_fraction = float(experiment.get("train_fraction", 0.7))
@@ -102,6 +125,19 @@ def parse_config(raw: dict[str, Any]) -> AppConfig:
     if not 0.1 <= walk_forward_min_train_fraction <= 0.9:
         raise ValueError("experiment.validation.walk_forward.min_train_fraction must be between 0.1 and 0.9")
 
+    neutralization_group_by = str(neutralization.get("group_by", "sector"))
+    if neutralization_group_by != "sector":
+        raise ValueError("experiment.stress_tests.neutralization.group_by must be 'sector'")
+
+    min_dollar_volume_rank = float(liquidity.get("min_dollar_volume_rank", 0.0))
+    if not 0.0 <= min_dollar_volume_rank < 1.0:
+        raise ValueError("experiment.stress_tests.liquidity.min_dollar_volume_rank must be between 0 and 1")
+
+    sectors = data.get("sectors")
+    parsed_sectors = None
+    if sectors:
+        parsed_sectors = {str(symbol).upper(): str(sector) for symbol, sector in sectors.items()}
+
     return AppConfig(
         data=DataConfig(
             source=str(data.get("source", "synthetic")),
@@ -109,6 +145,7 @@ def parse_config(raw: dict[str, Any]) -> AppConfig:
             start=str(data["start"]),
             end=str(data["end"]),
             seed=int(data.get("seed", 42)),
+            sectors=parsed_sectors,
         ),
         experiment=ExperimentConfig(
             name=str(experiment["name"]),
@@ -137,6 +174,16 @@ def parse_config(raw: dict[str, Any]) -> AppConfig:
                     window_count=walk_forward_window_count,
                     min_train_fraction=walk_forward_min_train_fraction,
                 )
+            ),
+            stress_tests=StressTestConfig(
+                neutralization=NeutralizationConfig(
+                    enabled=bool(neutralization.get("enabled", False)),
+                    group_by=neutralization_group_by,
+                ),
+                liquidity=LiquidityStressConfig(
+                    enabled=bool(liquidity.get("enabled", False)),
+                    min_dollar_volume_rank=min_dollar_volume_rank,
+                ),
             ),
         ),
         report=ReportConfig(

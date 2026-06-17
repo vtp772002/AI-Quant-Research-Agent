@@ -16,6 +16,16 @@ def test_research_workflow_produces_metrics_and_report(tmp_path: Path):
                 "start": "2020-01-01",
                 "end": "2022-12-31",
                 "seed": 11,
+                "sectors": {
+                    "AAA": "technology",
+                    "BBB": "technology",
+                    "CCC": "consumer",
+                    "DDD": "consumer",
+                    "EEE": "industrials",
+                    "FFF": "industrials",
+                    "GGG": "healthcare",
+                    "HHH": "healthcare",
+                },
             },
             "experiment": {
                 "name": "test_signal",
@@ -35,6 +45,16 @@ def test_research_workflow_produces_metrics_and_report(tmp_path: Path):
                         "window_count": 3,
                         "min_train_fraction": 0.4,
                     }
+                },
+                "stress_tests": {
+                    "neutralization": {
+                        "enabled": True,
+                        "group_by": "sector",
+                    },
+                    "liquidity": {
+                        "enabled": True,
+                        "min_dollar_volume_rank": 0.2,
+                    },
                 },
                 "baselines": [
                     {
@@ -76,12 +96,22 @@ def test_research_workflow_produces_metrics_and_report(tmp_path: Path):
     assert set(result.baselines) == {"momentum_20d_only", "reversal_20d_only", "random_cross_section"}
     assert result.baselines["momentum_20d_only"].metrics["test"]["observations"] > 0
     assert len(result.baselines["momentum_20d_only"].walk_forward) == 3
+    assert set(result.stress_tests) == {
+        "sector_neutral_signal",
+        "liquidity_top_80pct",
+        "sector_neutral_liquidity_top_80pct",
+    }
+    assert result.stress_tests["sector_neutral_signal"].metrics["test"]["observations"] > 0
+    assert len(result.stress_tests["liquidity_top_80pct"].walk_forward) == 3
     assert report_path.exists()
     report_text = report_path.read_text()
     assert "AI Quant Research Report" in report_text
     assert "Factor Diagnostics" in report_text
     assert "momentum_20d | reversal_20d" in report_text
     assert "Baseline Comparison" in report_text
+    assert "Stress Tests" in report_text
+    assert "sector_neutral_signal" in report_text
+    assert "liquidity_top_80pct" in report_text
     assert "Walk-Forward Validation" in report_text
     assert "wf_01" in report_text
     assert "momentum_20d_only" in report_text
@@ -92,6 +122,9 @@ def test_research_workflow_produces_metrics_and_report(tmp_path: Path):
         "momentum_20d_only",
         "reversal_20d_only",
         "random_cross_section",
+        "sector_neutral_signal",
+        "liquidity_top_80pct",
+        "sector_neutral_liquidity_top_80pct",
     }
     assert {"full_sample", "wf_01", "wf_02", "wf_03"}.issubset(set(experiment_rows["window"]))
-    assert len(experiment_rows) == 16
+    assert len(experiment_rows) == 28

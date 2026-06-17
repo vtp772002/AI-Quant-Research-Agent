@@ -70,6 +70,10 @@ class ReportAgent:
                 "",
                 _baseline_table(result),
                 "",
+                "## Stress Tests",
+                "",
+                _stress_test_table(result),
+                "",
                 "## Walk-Forward Validation",
                 "",
                 _walk_forward_agent_table(result.backtest),
@@ -82,6 +86,8 @@ class ReportAgent:
                 "",
                 _baseline_interpretation(result),
                 "",
+                _stress_test_interpretation(result),
+                "",
                 _factor_diagnostics_interpretation(result),
                 "",
                 _walk_forward_interpretation(result),
@@ -91,15 +97,15 @@ class ReportAgent:
                 "## Limitations",
                 "",
                 "- Synthetic data is useful for deterministic validation but is not investment evidence.",
-                "- v1 uses a simple long-short ranking portfolio without sector neutralization.",
+                "- Stress tests are diagnostics; the primary portfolio remains a simple long-short ranking portfolio.",
                 "- Transaction costs are modeled as proportional turnover costs only.",
-                "- No borrow constraints, liquidity caps, corporate actions, or survivorship controls are included yet.",
+                "- No borrow constraints, market impact model, corporate actions, or survivorship controls are included yet.",
                 "",
                 "## Next Experiments",
                 "",
                 "- Run the same signal on Yahoo Finance data for a real equity universe.",
-                "- Add factor correlation and redundancy analysis before combining signals.",
-                "- Stress-test promising factors with neutralization and liquidity constraints.",
+                "- Replace redundant factors or orthogonalize correlated exposures before combining signals.",
+                "- Add borrow costs and a liquidity-sensitive transaction cost model.",
                 "- Compare this factor against pure momentum, pure low volatility, and reversal baselines.",
                 "",
             ]
@@ -117,6 +123,16 @@ def write_experiment_row(result: ResearchRunResult, config: AppConfig) -> Path:
         backtest=result.backtest,
     )
     for name, backtest in result.baselines.items():
+        rows.extend(
+            _experiment_rows_for_strategy(
+                experiment=config.experiment.name,
+                strategy=name,
+                source=config.data.source,
+                universe_size=len(config.data.universe),
+                backtest=backtest,
+            )
+        )
+    for name, backtest in result.stress_tests.items():
         rows.extend(
             _experiment_rows_for_strategy(
                 experiment=config.experiment.name,
@@ -245,6 +261,25 @@ def _baseline_table(result: ResearchRunResult) -> str:
     return "\n".join(rows)
 
 
+def _stress_test_table(result: ResearchRunResult) -> str:
+    if not result.stress_tests:
+        return "No neutralization or liquidity stress tests were configured for this run."
+
+    rows = [
+        "| Stress Test | Test IC | Test Sharpe | Test Max Drawdown | Test Turnover | Test Total Return |",
+        "| --- | ---: | ---: | ---: | ---: | ---: |",
+    ]
+    for name, backtest in result.stress_tests.items():
+        metrics = backtest.metrics["test"]
+        rows.append(
+            "| {name} | {ic_mean:.4f} | {sharpe:.2f} | {max_drawdown:.2%} | {average_turnover:.2f} | {total_return:.2%} |".format(
+                name=name,
+                **metrics,
+            )
+        )
+    return "\n".join(rows)
+
+
 def _baseline_interpretation(result: ResearchRunResult) -> str:
     if not result.baselines:
         return "No baseline strategies were configured for this run."
@@ -267,6 +302,28 @@ def _baseline_interpretation(result: ResearchRunResult) -> str:
     return (
         f"The strongest out-of-sample Sharpe is from `{best_name}`, not the agent signal. "
         "Treat this as a useful rejection/iteration signal: inspect which factor exposure is carrying the result before adding model complexity."
+    )
+
+
+def _stress_test_interpretation(result: ResearchRunResult) -> str:
+    if not result.stress_tests:
+        return "No stress-test variants were configured for neutralization or liquidity constraints."
+
+    agent_sharpe = result.backtest.metrics["test"]["sharpe"]
+    agent_ic = result.backtest.metrics["test"]["ic_mean"]
+    passing = [
+        name
+        for name, backtest in result.stress_tests.items()
+        if backtest.metrics["test"]["ic_mean"] > 0 and backtest.metrics["test"]["sharpe"] > 0
+    ]
+    if passing:
+        return (
+            "The signal keeps positive test IC and Sharpe under these stress tests: "
+            f"{', '.join(passing)}. Compare their drawdowns and turnover before treating this as robust."
+        )
+    return (
+        "The stress-test variants did not preserve both positive IC and positive Sharpe. "
+        f"The base agent test IC is {agent_ic:.4f} and Sharpe is {agent_sharpe:.2f}; investigate sector or liquidity dependence."
     )
 
 
@@ -343,7 +400,7 @@ def _walk_forward_agent_table(backtest: BacktestResult) -> str:
 
 
 def _walk_forward_strategy_table(result: ResearchRunResult) -> str:
-    strategies = {"agent_signal": result.backtest, **result.baselines}
+    strategies = {"agent_signal": result.backtest, **result.baselines, **result.stress_tests}
     if not any(backtest.walk_forward for backtest in strategies.values()):
         return ""
 

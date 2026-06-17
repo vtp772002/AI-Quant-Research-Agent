@@ -31,8 +31,10 @@ python -m src.main --config configs/base.yaml
 6. Run a long-short backtest with chronological train/test split.
 7. Compare the agent signal against configured baseline strategies.
 8. Validate signal stability over configured walk-forward windows.
-9. Calculate IC, Sharpe ratio, max drawdown, turnover, and total return.
-10. Write a Markdown research report and append experiment metrics.
+9. Stress-test the agent signal with configured neutralization and liquidity
+   constraints.
+10. Calculate IC, Sharpe ratio, max drawdown, turnover, and total return.
+11. Write a Markdown research report and append experiment metrics.
 
 ## Data Contract
 
@@ -73,6 +75,13 @@ before interpreting results. The report shows factor coverage, missing rates,
 and high absolute Spearman-correlation pairs so redundant exposures can be
 simplified before adding more signal complexity.
 
+Stress tests are optional backtest variants that reuse the same market data,
+rebalance cadence, transaction cost assumption, and validation windows as the
+agent signal. Sector neutralization subtracts each configured sector's
+cross-sectional mean signal on each rebalance date. Liquidity filtering removes
+assets below the configured cross-sectional `dollar_volume_20d` rank before
+portfolio construction.
+
 ## Limitations
 
 - Synthetic data validates mechanics, not investment merit.
@@ -80,5 +89,6 @@ simplified before adding more signal complexity.
   data.
 - Walk-forward validation tests temporal stability but does not remove the need
   for better data controls and independent hypothesis review.
-- v1 does not include sector neutralization, borrow constraints, liquidity
-  caps, survivorship controls, or a full transaction cost model.
+- v1 stress tests include sector neutralization and liquidity filtering, but
+  they do not replace full risk modeling, borrow constraints, survivorship
+  controls, or a full transaction cost model.

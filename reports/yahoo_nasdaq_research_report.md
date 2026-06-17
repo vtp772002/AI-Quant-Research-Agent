@@ -53,6 +53,14 @@ No selected factor pairs exceeded absolute Spearman correlation of 0.75.
 | reversal_5d_only | 0.0613 | 0.66 | -26.71% | 3.26 | 28.19% |
 | random_cross_section | -0.0001 | -0.54 | -29.51% | 3.25 | -18.46% |
 
+## Stress Tests
+
+| Stress Test | Test IC | Test Sharpe | Test Max Drawdown | Test Turnover | Test Total Return |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| sector_neutral_signal | -0.0089 | -0.30 | -25.70% | 1.47 | -13.85% |
+| liquidity_top_80pct | 0.0048 | -0.34 | -27.63% | 1.42 | -17.65% |
+| sector_neutral_liquidity_top_80pct | 0.0009 | -0.13 | -20.24% | 1.46 | -8.82% |
+
 ## Walk-Forward Validation
 
 | Window | Train Through | Test Range | Obs | IC Mean | Sharpe | Hit Rate | Total Return |
@@ -68,12 +76,17 @@ No selected factor pairs exceeded absolute Spearman correlation of 0.75.
 | low_volatility_only | 3 | -0.0387 | -1.54 | 0.00% | -45.68% |
 | reversal_5d_only | 3 | 0.0206 | -0.31 | 66.67% | -1.14% |
 | random_cross_section | 3 | 0.0032 | -0.80 | 66.67% | -13.78% |
+| sector_neutral_signal | 3 | 0.0023 | 0.11 | 33.33% | -4.32% |
+| liquidity_top_80pct | 3 | 0.0086 | 0.19 | 66.67% | 0.28% |
+| sector_neutral_liquidity_top_80pct | 3 | 0.0009 | 0.08 | 66.67% | 1.37% |
 
 ## Interpretation
 
 The signal is not supported out-of-sample in this run. Treat it as rejected until a more robust variant improves IC stability without increasing overfit risk.
 
 The strongest out-of-sample Sharpe is from `reversal_5d_only`, not the agent signal. Treat this as a useful rejection/iteration signal: inspect which factor exposure is carrying the result before adding model complexity.
+
+The stress-test variants did not preserve both positive IC and positive Sharpe. The base agent test IC is -0.0079 and Sharpe is -0.44; investigate sector or liquidity dependence.
 
 Factor diagnostics did not flag high pairwise redundancy among selected exposures.
 
@@ -84,13 +97,13 @@ The train/test split is chronological. Test-period results are the primary evide
 ## Limitations
 
 - Synthetic data is useful for deterministic validation but is not investment evidence.
-- v1 uses a simple long-short ranking portfolio without sector neutralization.
+- Stress tests are diagnostics; the primary portfolio remains a simple long-short ranking portfolio.
 - Transaction costs are modeled as proportional turnover costs only.
-- No borrow constraints, liquidity caps, corporate actions, or survivorship controls are included yet.
+- No borrow constraints, market impact model, corporate actions, or survivorship controls are included yet.
 
 ## Next Experiments
 
 - Run the same signal on Yahoo Finance data for a real equity universe.
-- Add factor correlation and redundancy analysis before combining signals.
-- Stress-test promising factors with neutralization and liquidity constraints.
+- Replace redundant factors or orthogonalize correlated exposures before combining signals.
+- Add borrow costs and a liquidity-sensitive transaction cost model.
 - Compare this factor against pure momentum, pure low volatility, and reversal baselines.

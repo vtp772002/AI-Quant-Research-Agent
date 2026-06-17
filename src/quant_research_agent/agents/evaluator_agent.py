@@ -7,6 +7,7 @@ import pandas as pd
 from quant_research_agent.agents.baseline_agent import BaselineAgent
 from quant_research_agent.agents.factor_agent import FactorAgent
 from quant_research_agent.agents.hypothesis_agent import Hypothesis, HypothesisAgent
+from quant_research_agent.agents.stress_tests import evaluate_stress_tests
 from quant_research_agent.backtest.engine import BacktestResult, run_long_short_backtest
 from quant_research_agent.config import AppConfig
 from quant_research_agent.data.loader import MarketDataRequest, load_market_data
@@ -26,6 +27,7 @@ class ResearchRunResult:
     signal: pd.Series
     backtest: BacktestResult
     baselines: dict[str, BacktestResult]
+    stress_tests: dict[str, BacktestResult]
     factor_diagnostics: FactorDiagnostics
 
 
@@ -59,6 +61,12 @@ def run_research_workflow(config: AppConfig) -> ResearchRunResult:
         config=config,
         reference_index=signal.index,
     )
+    stress_tests = evaluate_stress_tests(
+        market_data=market_data,
+        factors=factors,
+        signal=signal,
+        config=config,
+    )
     factor_diagnostics = compute_factor_diagnostics(
         factors=factors,
         selected_factors=selected_factor_names(config),
@@ -70,5 +78,6 @@ def run_research_workflow(config: AppConfig) -> ResearchRunResult:
         signal=signal,
         backtest=backtest,
         baselines=baselines,
+        stress_tests=stress_tests,
         factor_diagnostics=factor_diagnostics,
     )

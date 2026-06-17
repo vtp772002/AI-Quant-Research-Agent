@@ -24,6 +24,27 @@ data:
   start: "2020-01-01"
   end: "2025-12-31"
   seed: 42
+  sectors:
+    AAPL: technology
+    MSFT: technology
+    NVDA: semiconductors
+    AMZN: consumer_discretionary
+    META: communication_services
+    GOOGL: communication_services
+    AVGO: semiconductors
+    COST: consumer_staples
+    TSLA: consumer_discretionary
+    NFLX: communication_services
+    AMD: semiconductors
+    ADBE: technology
+    CSCO: technology
+    QCOM: semiconductors
+    TXN: semiconductors
+    INTU: technology
+    AMAT: semiconductors
+    HON: industrials
+    SBUX: consumer_discretionary
+    BKNG: consumer_discretionary
 
 experiment:
   name: yahoo_nasdaq_momentum_low_volatility
@@ -45,6 +66,13 @@ experiment:
     walk_forward:
       window_count: 3
       min_train_fraction: 0.4
+  stress_tests:
+    neutralization:
+      enabled: true
+      group_by: sector
+    liquidity:
+      enabled: true
+      min_dollar_volume_rank: 0.2
   baselines:
     - name: momentum_20d_only
       positive_factors:

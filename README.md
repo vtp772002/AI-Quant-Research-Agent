@@ -88,6 +88,7 @@ The research report includes:
 - Baseline comparison on test-period metrics.
 - Walk-forward validation across multiple chronological windows.
 - Factor coverage and redundancy diagnostics for selected exposures.
+- Neutralization and liquidity stress tests for the agent signal.
 
 ## Validation
 
@@ -100,11 +101,11 @@ python -m quant_research_agent.main --config configs/base.yaml --json
 
 - Synthetic data validates mechanics but is not investment evidence.
 - Yahoo Finance is a convenient demo source, not an institutional data source.
-- v1 has no sector neutralization, borrow constraints, liquidity caps,
-  survivorship controls, or advanced transaction cost model.
+- v1 has diagnostic neutralization and liquidity stress tests, but no borrow
+  constraints, survivorship controls, or advanced transaction cost model.
 
 ## Next Steps
 
-- Add neutralization and liquidity stress tests for promising factors.
+- Add borrow costs and liquidity-sensitive transaction cost modeling.
 - Add paper-to-alpha extraction that turns quant papers/blogs into experiment
   templates.
