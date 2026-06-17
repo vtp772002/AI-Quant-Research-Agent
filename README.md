@@ -49,6 +49,13 @@ curl http://127.0.0.1:8000/health
 curl "http://127.0.0.1:8000/signals/as-of?config_path=configs/base.yaml&date=2022-12-30"
 ```
 
+Compare generated runs:
+
+```bash
+python -m quant_research_agent.main --compare-runs results/runs --comparison-metric sharpe --limit 10
+python -m quant_research_agent.main --compare-runs results/runs --json --output results/run_comparison.json
+```
+
 Run a local production-like container:
 
 ```bash
@@ -137,6 +144,9 @@ The research report includes:
   default, populated from reproducibility manifests.
 - As-of signal generation for daily research automation without using future
   returns.
+- Run comparison tooling over reproducibility manifests, with provenance
+  warnings when compared runs use different configs, commits, data sources, or
+  dirty worktrees.
 
 ## Validation
 
@@ -153,8 +163,8 @@ python -m quant_research_agent.api
   reports flag this explicitly in the data integrity section.
 - v1 has diagnostic neutralization, liquidity stress tests, robustness checks,
   capacity diagnostics, a liquidity-sensitive transaction cost model, borrow
-  constraints, a CSV locate-history adapter, a local experiment registry, an
-  internal API, and as-of signal generation, but no direct vendor API
+  constraints, a CSV locate-history adapter, run comparison, a local experiment
+  registry, an internal API, and as-of signal generation, but no direct vendor API
   integration, broker-grade locate entitlement feed, auth, paper/live broker
   execution, order management, or compliance workflow.
 
@@ -186,6 +196,5 @@ Deferred until separate stories:
 - Add direct locate/borrow availability integration from a securities-lending
   source.
 - Add broker-grade execution simulator with venue routing and order scheduling.
-- Add run comparison tooling over reproducibility manifests.
 - Add paper-to-alpha extraction that turns quant papers/blogs into experiment
   templates.

@@ -61,6 +61,8 @@ investment-advice API and does not place orders.
     experiment registry.
 18. Generate as-of signal snapshots for a requested date using only data
     available on or before that date.
+19. Compare reproducibility manifests across prior runs and rank them by a
+    selected test-period metric.
 
 ## Data Contract
 
@@ -186,6 +188,12 @@ artifact paths, and key train/test metrics. It is the Level 1 local system of
 record for internal research runs; a Postgres-backed registry is a later
 deployment story.
 
+Run comparison reads one manifest file or the `manifest.json` files under a
+run-bundle directory such as `results/runs/`. It ranks runs by a selected
+test-period metric, emits Markdown or JSON, and warns when compared runs are not
+strictly like-for-like because they use different config hashes, git commits,
+data sources, snapshot dataset ids, or dirty worktrees.
+
 As-of signal generation truncates loaded market data to the requested date,
 computes configured factors and signal scores, and emits symbol-level signal
 score, rank, target weight, reason, data timestamp, model/config version, and
@@ -203,8 +211,8 @@ risk status. It does not compute forward returns or claim execution feasibility.
 - v1 includes liquidity-sensitive transaction costs, borrow fees, shortability
   constraints, robustness diagnostics, and a CSV point-in-time universe adapter,
   plus capacity diagnostics and validated CSV snapshot and locate-history
-  adapters, plus reproducibility manifests, a local experiment registry, an
-  internal API, and as-of signal snapshots, but these remain research
+  adapters, plus reproducibility manifests, run comparison, a local experiment
+  registry, an internal API, and as-of signal snapshots, but these remain research
   approximations and do not replace broker execution data, direct
   securities-lending feeds, direct vendor market data APIs, venue routing
   analysis, independent alpha review, multiple-hypothesis controls, immutable
