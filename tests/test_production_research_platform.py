@@ -27,6 +27,8 @@ def test_experiment_registry_records_and_queries_run(tmp_path: Path):
 
     assert record.run_id == "run-001"
     assert record.test_sharpe == 1.25
+    assert record.metrics["holdout"]["sharpe"] == 0.75
+    assert record.metrics["research_validity"]["verdict"] == "REVIEW"
     assert get_run(registry_path, "run-001") == record
     assert [item.run_id for item in list_runs(registry_path)] == ["run-001"]
 
@@ -471,5 +473,19 @@ def _manifest(run_id: str, report_path: Path) -> dict[str, object]:
                 "sharpe": 1.4,
                 "total_return": 0.2,
             },
+            "holdout": {
+                "sharpe": 0.75,
+                "total_return": 0.05,
+            },
+            "validation": {
+                "sharpe": 1.25,
+                "total_return": 0.12,
+            },
+            "research_validity": {
+                "verdict": "REVIEW",
+            },
+        },
+        "research_validity": {
+            "verdict": "REVIEW",
         },
     }

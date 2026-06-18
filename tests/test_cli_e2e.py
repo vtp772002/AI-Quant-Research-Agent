@@ -78,6 +78,14 @@ experiment:
     walk_forward:
       window_count: 2
       min_train_fraction: 0.4
+    research_validity:
+      enabled: true
+      holdout_fraction: 0.15
+      fdr_alpha: 0.25
+      require_positive_return: true
+      require_baseline_outperformance: true
+      require_walk_forward_stability: true
+      require_data_readiness: true
   stress_tests:
     neutralization:
       enabled: true
@@ -138,15 +146,19 @@ report:
     assert manifest["artifacts"]["report_sha256"] == file_sha256(report_path)
     assert manifest["artifacts"]["experiments_sha256"] == file_sha256(experiments_path)
     assert manifest["data"]["locate_history_sha256"] == file_sha256(locate_path)
+    assert manifest["research_validity"] == payload["research_validity"]
+    assert manifest["metrics"]["holdout"] == payload["metrics"]["holdout"]
+    assert manifest["metrics"]["validation"] == payload["metrics"]["test"]
+    assert manifest["metrics"]["research_validity"]["verdict"] == payload["research_validity"]["verdict"]
     assert payload["universe"]["point_in_time"]
     assert payload["universe"]["survivorship_bias_free"]
     assert payload["universe"]["symbol_count"] == 8
     assert payload["metrics"]["test"]["average_total_cost"] > 0
     assert payload["metrics"]["test"]["average_impact_cost"] > 0
     assert payload["metrics"]["test"]["average_borrow_cost"] > 0
-    assert payload["metrics"]["holdout"]["observations"] == 0.0
+    assert payload["metrics"]["holdout"]["observations"] > 0.0
     assert payload["research_validity"]["verdict"] in {"PROMOTE", "REVIEW", "REJECT"}
-    assert payload["research_validity"]["enabled"] is False
+    assert payload["research_validity"]["enabled"] is True
     assert payload["research_validity"]["candidates"][0]["name"] == "agent_signal"
     assert payload["shorting"]["locate_history_path"] == str(locate_path)
     assert payload["borrow_availability"]["unavailable_rows"] > 0
@@ -185,6 +197,13 @@ report:
     assert frame["locate_history"].str.contains("locates.csv").any()
     assert set(frame["run_id"]) == {payload["run"]["run_id"]}
     assert set(frame["config_sha256"]) == {file_sha256(config_path)}
+    assert set(frame["validity_verdict"]) == {payload["research_validity"]["verdict"]}
+    assert frame["validity_enabled"].all()
+    assert frame["holdout_start"].notna().all()
+    assert frame["holdout_sharpe"].notna().all()
+    assert frame["holdout_ic_mean"].notna().all()
+    assert frame["holdout_total_return"].notna().all()
+    assert frame["agent_fdr_q_value"].between(0.0, 1.0).all()
 
 
 def test_cli_e2e_runs_csv_snapshot_with_manifest_provenance(tmp_path: Path):

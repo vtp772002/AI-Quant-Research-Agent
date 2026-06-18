@@ -163,6 +163,7 @@ def write_experiment_row(
 ) -> Path:
     path = config.report.experiments_path
     path.parent.mkdir(parents=True, exist_ok=True)
+    validity_columns = _validity_summary_columns(result)
     rows = _experiment_rows_for_strategy(
         experiment=config.experiment.name,
         strategy="agent_signal",
@@ -173,6 +174,7 @@ def write_experiment_row(
         run_id=run_id,
         config_sha256=config_sha256,
         backtest=result.backtest,
+        validity_columns=validity_columns,
     )
     for name, backtest in result.baselines.items():
         rows.extend(
@@ -186,6 +188,7 @@ def write_experiment_row(
                 run_id=run_id,
                 config_sha256=config_sha256,
                 backtest=backtest,
+                validity_columns=validity_columns,
             )
         )
     for name, backtest in result.stress_tests.items():
@@ -200,6 +203,7 @@ def write_experiment_row(
                 run_id=run_id,
                 config_sha256=config_sha256,
                 backtest=backtest,
+                validity_columns=validity_columns,
             )
         )
 
@@ -234,6 +238,13 @@ def write_experiment_row(
         "train_end",
         "test_start",
         "test_end",
+        "validity_verdict",
+        "validity_enabled",
+        "holdout_start",
+        "holdout_sharpe",
+        "holdout_ic_mean",
+        "holdout_total_return",
+        "agent_fdr_q_value",
     ]
     trailing = [column for column in frame.columns if column not in leading]
     frame = frame[leading + trailing]
@@ -251,6 +262,7 @@ def _experiment_rows_for_strategy(
     run_id: str,
     config_sha256: str,
     backtest: BacktestResult,
+    validity_columns: dict[str, object],
 ) -> list[dict[str, object]]:
     provenance = data_integrity.provenance
     base = {
@@ -264,6 +276,7 @@ def _experiment_rows_for_strategy(
         "as_of": provenance.as_of if provenance is not None else "",
         "locate_history": borrow_availability.summary.path if borrow_availability is not None else "",
         "universe_size": universe_size,
+        **validity_columns,
     }
     rows: list[dict[str, object]] = [
         {
@@ -290,6 +303,23 @@ def _experiment_rows_for_strategy(
             }
         )
     return rows
+
+
+def _validity_summary_columns(result: ResearchRunResult) -> dict[str, object]:
+    agent = next(
+        candidate
+        for candidate in result.research_validity.candidates
+        if candidate.name == "agent_signal"
+    )
+    return {
+        "validity_verdict": result.research_validity.verdict,
+        "validity_enabled": result.research_validity.enabled,
+        "holdout_start": result.research_validity.holdout_start or "",
+        "holdout_sharpe": agent.holdout_sharpe,
+        "holdout_ic_mean": agent.holdout_ic_mean,
+        "holdout_total_return": agent.holdout_total_return,
+        "agent_fdr_q_value": agent.q_value,
+    }
 
 
 def _metrics_table(sections: dict[str, dict[str, float]]) -> str:

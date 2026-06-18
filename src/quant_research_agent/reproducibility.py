@@ -10,6 +10,7 @@ from uuid import uuid4
 import json
 
 from quant_research_agent.agents.evaluator_agent import ResearchRunResult
+from quant_research_agent.agents.research_validity import research_validity_to_dict
 from quant_research_agent.config import AppConfig
 from quant_research_agent.data.snapshot import file_sha256
 
@@ -76,6 +77,7 @@ def write_reproducibility_pack(
     context.bundle_dir.mkdir(parents=True, exist_ok=True)
     copy2(context.config_path, context.copied_config_path)
 
+    research_validity = research_validity_to_dict(result.research_validity)
     manifest = {
         "run_id": context.run_id,
         "generated_at": context.generated_at,
@@ -96,8 +98,12 @@ def write_reproducibility_pack(
         },
         "metrics": {
             "test": result.backtest.metrics["test"],
+            "validation": result.backtest.metrics["validation"],
+            "holdout": result.backtest.metrics["holdout"],
             "full": result.backtest.metrics["full"],
+            "research_validity": research_validity,
         },
+        "research_validity": research_validity,
     }
     context.manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
     return manifest
