@@ -87,6 +87,49 @@ def test_parse_config_defaults_research_validity_for_compatibility():
     assert validity.require_data_readiness is True
 
 
+@pytest.mark.parametrize(
+    "field",
+    [
+        "enabled",
+        "require_positive_return",
+        "require_baseline_outperformance",
+        "require_walk_forward_stability",
+        "require_data_readiness",
+    ],
+)
+@pytest.mark.parametrize("value", ["false", "true", 0, 1, "not-a-boolean", None])
+def test_parse_config_rejects_non_boolean_research_validity_flags(field: str, value: object):
+    raw = _raw_config()
+    raw["experiment"]["validation"]["research_validity"] = {field: value}
+
+    with pytest.raises(ValueError) as exc_info:
+        parse_config(raw)
+
+    assert str(exc_info.value) == f"experiment.validation.research_validity.{field} must be a boolean"
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "holdout_fraction",
+        "fdr_alpha",
+        "min_holdout_sharpe",
+        "min_holdout_ic",
+    ],
+)
+@pytest.mark.parametrize("value", [True, False])
+def test_parse_config_rejects_boolean_research_validity_numbers(field: str, value: bool):
+    raw = _raw_config()
+    raw["experiment"]["validation"]["research_validity"] = {field: value}
+
+    with pytest.raises(ValueError) as exc_info:
+        parse_config(raw)
+
+    assert str(exc_info.value) == (
+        f"experiment.validation.research_validity.{field} must be a number, not a boolean"
+    )
+
+
 @pytest.mark.parametrize("holdout_fraction", [0.01, 0.45])
 def test_parse_config_rejects_invalid_research_validity_holdout(holdout_fraction: float):
     raw = _raw_config()

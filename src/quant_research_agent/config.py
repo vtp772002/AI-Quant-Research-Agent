@@ -210,24 +210,39 @@ def parse_config(raw: dict[str, Any], base_dir: str | Path | None = None) -> App
     if not 0.1 <= walk_forward_min_train_fraction <= 0.9:
         raise ValueError("experiment.validation.walk_forward.min_train_fraction must be between 0.1 and 0.9")
 
-    research_validity_enabled = bool(research_validity.get("enabled", False))
-    holdout_fraction = float(research_validity.get("holdout_fraction", 0.15))
+    research_validity_enabled = _parse_research_validity_bool(
+        research_validity.get("enabled", False),
+        "enabled",
+    )
+    holdout_fraction = _parse_research_validity_float(
+        research_validity.get("holdout_fraction", 0.15),
+        "holdout_fraction",
+    )
     if not 0.05 <= holdout_fraction <= 0.40:
         raise ValueError(
             "experiment.validation.research_validity.holdout_fraction must be between 0.05 and 0.40"
         )
 
-    fdr_alpha = float(research_validity.get("fdr_alpha", 0.10))
+    fdr_alpha = _parse_research_validity_float(
+        research_validity.get("fdr_alpha", 0.10),
+        "fdr_alpha",
+    )
     if not 0.0 < fdr_alpha <= 0.25:
         raise ValueError(
             "experiment.validation.research_validity.fdr_alpha must be greater than 0 and at most 0.25"
         )
 
-    min_holdout_sharpe = float(research_validity.get("min_holdout_sharpe", 0.0))
+    min_holdout_sharpe = _parse_research_validity_float(
+        research_validity.get("min_holdout_sharpe", 0.0),
+        "min_holdout_sharpe",
+    )
     if not isfinite(min_holdout_sharpe):
         raise ValueError("experiment.validation.research_validity.min_holdout_sharpe must be finite")
 
-    min_holdout_ic = float(research_validity.get("min_holdout_ic", 0.0))
+    min_holdout_ic = _parse_research_validity_float(
+        research_validity.get("min_holdout_ic", 0.0),
+        "min_holdout_ic",
+    )
     if not isfinite(min_holdout_ic):
         raise ValueError("experiment.validation.research_validity.min_holdout_ic must be finite")
 
@@ -235,6 +250,23 @@ def parse_config(raw: dict[str, Any], base_dir: str | Path | None = None) -> App
         raise ValueError(
             "experiment.train_fraction plus research_validity.holdout_fraction must be at most 0.90"
         )
+
+    require_positive_return = _parse_research_validity_bool(
+        research_validity.get("require_positive_return", True),
+        "require_positive_return",
+    )
+    require_baseline_outperformance = _parse_research_validity_bool(
+        research_validity.get("require_baseline_outperformance", True),
+        "require_baseline_outperformance",
+    )
+    require_walk_forward_stability = _parse_research_validity_bool(
+        research_validity.get("require_walk_forward_stability", True),
+        "require_walk_forward_stability",
+    )
+    require_data_readiness = _parse_research_validity_bool(
+        research_validity.get("require_data_readiness", True),
+        "require_data_readiness",
+    )
 
     neutralization_group_by = str(neutralization.get("group_by", "sector"))
     if neutralization_group_by != "sector":
@@ -366,14 +398,10 @@ def parse_config(raw: dict[str, Any], base_dir: str | Path | None = None) -> App
                     fdr_alpha=fdr_alpha,
                     min_holdout_sharpe=min_holdout_sharpe,
                     min_holdout_ic=min_holdout_ic,
-                    require_positive_return=bool(research_validity.get("require_positive_return", True)),
-                    require_baseline_outperformance=bool(
-                        research_validity.get("require_baseline_outperformance", True)
-                    ),
-                    require_walk_forward_stability=bool(
-                        research_validity.get("require_walk_forward_stability", True)
-                    ),
-                    require_data_readiness=bool(research_validity.get("require_data_readiness", True)),
+                    require_positive_return=require_positive_return,
+                    require_baseline_outperformance=require_baseline_outperformance,
+                    require_walk_forward_stability=require_walk_forward_stability,
+                    require_data_readiness=require_data_readiness,
                 ),
             ),
             stress_tests=StressTestConfig(
@@ -410,6 +438,23 @@ def parse_config(raw: dict[str, Any], base_dir: str | Path | None = None) -> App
             registry_path=Path(report.get("registry_path", "results/experiments.sqlite")),
         ),
     )
+
+
+def _parse_research_validity_bool(value: object, field_name: str) -> bool:
+    if type(value) is not bool:
+        raise ValueError(
+            f"experiment.validation.research_validity.{field_name} must be a boolean"
+        )
+    return value
+
+
+def _parse_research_validity_float(value: object, field_name: str) -> float:
+    if isinstance(value, bool):
+        raise ValueError(
+            f"experiment.validation.research_validity.{field_name} "
+            "must be a number, not a boolean"
+        )
+    return float(value)
 
 
 def _resolve_optional_path(value: object, base_path: Path) -> Path | None:
