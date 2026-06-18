@@ -83,23 +83,25 @@ ledger.
 22. Run scheduled-style research batches over one or more configs and publish
     batch summaries plus comparison artifacts.
 23. Export the local registry as offline object-store/Postgres handoff artifacts.
-24. Load vendor snapshot drops through the validated OHLCV snapshot boundary.
-25. Extract draft alpha experiment templates from paper or blog text.
-26. Simulate as-of execution plans without routing orders or contacting brokers.
-27. Generate validated research idea configs from prior run memory, critique
+24. Export and verify immutable registry governance packs with artifact hashes,
+    retention metadata, family evidence, and a hash chain.
+25. Load vendor snapshot drops through the validated OHLCV snapshot boundary.
+26. Extract draft alpha experiment templates from paper or blog text.
+27. Simulate as-of execution plans without routing orders or contacting brokers.
+28. Generate validated research idea configs from prior run memory, critique
     existing runs, and orchestrate iterative alpha-mining batches.
-28. Run idea generation through a governed provider boundary with deterministic,
+29. Run idea generation through a governed provider boundary with deterministic,
     fixture, or explicitly allowed command providers and transcript artifacts.
-29. Gate generated idea execution behind a human review queue with draft,
+30. Gate generated idea execution behind a human review queue with draft,
     approved, rejected, ran, and archived statuses.
-30. Persist an append-only review audit ledger for generated idea creation,
+31. Persist an append-only review audit ledger for generated idea creation,
     status changes, and run marking.
-31. Protect non-health internal API routes with API keys and role-scoped access.
-32. Emit API request logs with sanitized authenticated actor and authorization
+32. Protect non-health internal API routes with API keys and role-scoped access.
+33. Emit API request logs with sanitized authenticated actor and authorization
     result context.
-33. Expose review queue summary, audit, status-update, and run-approved
+34. Expose review queue summary, audit, status-update, and run-approved
     operations through the role-scoped internal API.
-34. Generate research ideas through an opt-in live OpenAI provider while
+35. Generate research ideas through an opt-in live OpenAI provider while
     preserving credential guards, transcripts, validation, and review gating.
 
 ## Data Contract
@@ -271,10 +273,15 @@ artifacts for the generated run bundle directory. It is suitable for cron,
 GitHub Actions, or a future worker, but it is not a queue or distributed
 scheduler.
 
-Registry export writes newline-delimited JSON records, an export manifest, and
-a reviewable Postgres upsert handoff SQL file from the local SQLite registry.
-This is an offline migration and object-store handoff surface, not a managed
-database service, migration tool, or retention policy.
+Registry export writes newline-delimited JSON records, an export manifest, a
+reviewable Postgres upsert handoff SQL file, a governance manifest, and a
+hash-chain file from the local SQLite registry. The governance manifest records
+schema version, owner, retention metadata, optional previous-pack hash link,
+artifact SHA-256 hashes, final chain hash, and experiment-family evidence. The
+CLI can verify exported governance packs and exits non-zero when artifact hashes
+or hash-chain evidence no longer match. This is an offline migration and
+object-store handoff surface, not a managed database service, migration tool, or
+cloud object-lock retention policy.
 
 Vendor snapshot ingestion treats commercial data as a validated file drop at the
 same OHLCV boundary as CSV snapshots. It requires explicit provenance review and
@@ -354,11 +361,12 @@ risk status. It does not compute forward returns or claim execution feasibility.
   idea generation, governed provider transcripts, an opt-in live OpenAI adapter,
   run critique, research memory, iterative alpha mining, an internal API, as-of
   signal snapshots, broker-free execution simulation, an advisory
-  research-validity gate with within-run Benjamini-Hochberg FDR correction, and
-  cross-run experiment-family controls, but
+  research-validity gate with within-run Benjamini-Hochberg FDR correction,
+  cross-run experiment-family controls, and immutable registry governance export
+  packs, but
   these remain research approximations and do not replace broker execution
   data, direct securities-lending feeds, direct vendor market data APIs, venue
   routing analysis, independent alpha review, separately locked institutional
-  holdout datasets, immutable object storage, managed registry governance,
+  holdout datasets, immutable object storage, managed registry deployment,
   multi-user SaaS authorization, provider-specific LLM evals and
   rate-limit orchestration, or a full production execution simulator.

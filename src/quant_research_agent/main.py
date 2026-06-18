@@ -22,7 +22,12 @@ from quant_research_agent.idea_review import (
 )
 from quant_research_agent.operations import batch_result_to_dict, run_research_batch
 from quant_research_agent.paper_alpha import template_to_config, write_alpha_template
-from quant_research_agent.registry_export import export_registry_snapshot, registry_export_to_dict
+from quant_research_agent.registry_export import (
+    export_registry_snapshot,
+    registry_export_to_dict,
+    registry_governance_verification_to_dict,
+    verify_registry_governance_pack,
+)
 from quant_research_agent.research_agents import (
     critique_run_manifest,
     critique_to_dict,
@@ -77,6 +82,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--registry-path", default="results/experiments.sqlite", help="SQLite registry path for registry export.")
     parser.add_argument("--postgres-table", default="experiment_runs", help="Postgres table name for generated registry SQL.")
+    parser.add_argument("--registry-owner", default="local-research-operator", help="Owner recorded in registry governance exports.")
+    parser.add_argument("--registry-retention-days", type=int, default=365, help="Minimum retention days recorded in registry governance exports.")
+    parser.add_argument("--previous-governance-manifest", help="Optional previous governance manifest path to hash-link into this export.")
+    parser.add_argument("--verify-registry-governance", help="Verify a registry governance export directory.")
     parser.add_argument("--paper-to-alpha", help="Extract a draft alpha experiment template from a paper/blog text file.")
     parser.add_argument("--template-output", help="Output YAML path for --paper-to-alpha.")
     parser.add_argument("--simulate-execution", action="store_true", help="Simulate an as-of execution plan without placing trades.")
@@ -240,9 +249,19 @@ def main(argv: list[str] | None = None) -> int:
             registry_path=Path(args.registry_path),
             output_dir=Path(args.export_registry),
             postgres_table=args.postgres_table,
+            owner=args.registry_owner,
+            minimum_retention_days=args.registry_retention_days,
+            previous_governance_manifest=Path(args.previous_governance_manifest)
+            if args.previous_governance_manifest
+            else None,
         )
         print(json.dumps(registry_export_to_dict(export), indent=2, sort_keys=True))
         return 0
+
+    if args.verify_registry_governance:
+        verification = verify_registry_governance_pack(Path(args.verify_registry_governance))
+        print(json.dumps(registry_governance_verification_to_dict(verification), indent=2, sort_keys=True))
+        return 0 if verification.valid else 1
 
     if args.paper_to_alpha:
         output_path = Path(args.template_output or "results/paper_alpha_template.yaml")

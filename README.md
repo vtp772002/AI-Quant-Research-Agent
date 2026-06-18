@@ -89,6 +89,7 @@ Export the local registry for object-store/Postgres handoff:
 
 ```bash
 python -m quant_research_agent.main --export-registry results/registry_export --registry-path results/experiments.sqlite
+python -m quant_research_agent.main --verify-registry-governance results/registry_export
 ```
 
 Extract a draft experiment template from paper or blog text:
@@ -236,7 +237,8 @@ The research report includes:
 - Scheduled-style batch orchestration that runs one or more configs and writes
   batch summaries plus comparison artifacts.
 - Offline registry export artifacts for object-store and Postgres migration
-  handoff review.
+  handoff review, including an immutable governance manifest, artifact hashes,
+  retention metadata, family evidence, and a verifiable hash chain.
 - Vendor snapshot ingestion through the same validated OHLCV snapshot boundary.
 - Heuristic paper-to-alpha extraction into draft experiment templates.
 - Broker-free execution simulation that applies participation gates without
@@ -286,10 +288,11 @@ python -m quant_research_agent.api
   agent contracts, an opt-in live LLM adapter, an internal API, as-of signal
   generation, broker-free execution simulation, human review gating, review
   queue API endpoints for generated ideas, an advisory research-validity gate
-  with within-run FDR correction, and cross-run experiment-family controls, but no live vendor API integration,
+  with within-run FDR correction, cross-run experiment-family controls, and
+  immutable registry governance export packs, but no live vendor API integration,
   broker-grade locate entitlement feed, paper/live broker execution, order
   management, compliance workflow, separately locked holdout dataset, managed
-  immutable registry governance, or multi-user family authorization.
+  Postgres/object-lock registry deployment, or multi-user family authorization.
 
 ## Production Readiness Path
 
@@ -308,6 +311,8 @@ Implemented Level 1 foundations:
 - Review queue API endpoints for summaries, audit events, status updates, and
   approved-idea batch runs.
 - Offline registry export handoff.
+- Immutable registry governance export packs with hash-chain verification,
+  owner/retention metadata, and family evidence.
 - Vendor snapshot boundary, paper-to-alpha templates, and execution simulation.
 - Research idea generation, critique, memory, paper-to-alpha v2, and alpha-mining
   orchestration with deterministic fallback, an opt-in live OpenAI provider,
@@ -319,22 +324,22 @@ Implemented Level 1 foundations:
 
 Deferred until separate stories:
 
-- Managed Postgres/object-storage registry with migrations and retention policy.
+- Managed Postgres/object-lock registry deployment with migrations and enforced
+  retention policy.
 - Queue-backed scheduler/worker orchestration beyond the provided daily-run script.
 - Multi-user SaaS controls beyond API-key roles.
 - Live commercial data vendor API integration with credentials and rate-limit handling.
 - Paper trading, broker integration, hard risk gates, reconciliation, and kill switch controls.
-- Immutable registry governance and separately locked institutional holdout
-  datasets.
+- Separately locked institutional holdout datasets.
 
 ## Next Steps
 
 - Add reviewed prompt templates and additional provider-specific adapters after
   live OpenAI transcripts have been reviewed.
-- Promote registry export handoff into managed Postgres/object-storage deployment.
+- Promote registry governance packs into managed Postgres/object-lock deployment.
 - Add direct vendor API and securities-lending integrations after credential,
   entitlement, and provenance contracts are specified.
-- Promote experiment-family registry metadata into managed immutable storage
-  once ownership and retention rules are defined.
+- Add retention enforcement after managed storage ownership and credentials are
+  specified.
 - Add paper-trading stories only after risk gates, reconciliation, and kill-switch
   requirements are documented.

@@ -9,9 +9,10 @@ import pytest
 from quant_research_agent.config import parse_config
 from quant_research_agent.data.loader import MarketDataRequest, load_market_data
 from quant_research_agent.execution_simulator import simulate_execution_plan
+from quant_research_agent.main import main
 from quant_research_agent.operations import batch_result_to_dict, run_research_batch
 from quant_research_agent.paper_alpha import extract_alpha_template, template_to_config
-from quant_research_agent.registry_export import export_registry_snapshot
+from quant_research_agent.registry_export import export_registry_snapshot, verify_registry_governance_pack
 from quant_research_agent.signals import SignalAsOfResult, SignalAsOfRow
 from quant_research_agent.experiment_registry import record_run
 
@@ -46,12 +47,89 @@ def test_registry_export_writes_ndjson_manifest_and_postgres_handoff(tmp_path: P
     assert export.records_path.read_text(encoding="utf-8").count("\n") == 1
     manifest = json.loads(export.manifest_path.read_text(encoding="utf-8"))
     assert manifest["run_count"] == 1
+    assert manifest["hash_chain_path"] == str(export.hash_chain_path)
+    assert manifest["governance_manifest_path"] == str(export.governance_manifest_path)
     assert "CREATE TABLE IF NOT EXISTS experiment_runs" in export.postgres_sql_path.read_text(encoding="utf-8")
+
+
+def test_registry_export_writes_verifiable_governance_pack(tmp_path: Path):
+    registry_path = tmp_path / "experiments.sqlite"
+    record_run(registry_path, _manifest("run-001", tmp_path / "report.md"))
+    record_run(registry_path, _manifest("run-002", tmp_path / "report-2.md"))
+
+    export = export_registry_snapshot(
+        registry_path,
+        tmp_path / "registry_export",
+        owner="research-ops",
+        minimum_retention_days=730,
+    )
+
+    governance = json.loads(export.governance_manifest_path.read_text(encoding="utf-8"))
+    assert governance["schema_version"] == "registry_governance_v1"
+    assert governance["owner"] == "research-ops"
+    assert governance["retention"]["minimum_days"] == 730
+    assert governance["run_count"] == 2
+    assert governance["final_chain_hash"]
+    assert {row["run_id"] for row in governance["family_evidence"]} == {"run-001", "run-002"}
+
+    verification = verify_registry_governance_pack(export.output_dir)
+
+    assert verification.valid
+    assert verification.errors == []
+    assert export.records_path in verification.checked_files
+    assert export.hash_chain_path in verification.checked_files
+
+
+def test_registry_governance_verification_detects_record_tampering(tmp_path: Path):
+    registry_path = tmp_path / "experiments.sqlite"
+    record_run(registry_path, _manifest("run-001", tmp_path / "report.md"))
+    export = export_registry_snapshot(registry_path, tmp_path / "registry_export")
+    line = json.loads(export.records_path.read_text(encoding="utf-8").splitlines()[0])
+    line["selection_policy"] = "winner_after_search"
+    export.records_path.write_text(json.dumps(line, sort_keys=True) + "\n", encoding="utf-8")
+
+    verification = verify_registry_governance_pack(export.output_dir)
+
+    assert not verification.valid
+    assert "artifact records sha256 mismatch" in verification.errors
+    assert any("record hash mismatch" in error for error in verification.errors)
+
+
+def test_registry_governance_cli_verify_returns_failure_for_tampered_pack(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
+    registry_path = tmp_path / "experiments.sqlite"
+    record_run(registry_path, _manifest("run-001", tmp_path / "report.md"))
+    export = export_registry_snapshot(registry_path, tmp_path / "registry_export")
+    export.hash_chain_path.write_text("", encoding="utf-8")
+
+    exit_code = main(["--verify-registry-governance", str(export.output_dir)])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 1
+    assert payload["valid"] is False
+    assert "artifact hash_chain sha256 mismatch" in payload["errors"]
+
+
+def test_registry_governance_verification_reports_malformed_manifest(tmp_path: Path):
+    output_dir = tmp_path / "registry_export"
+    output_dir.mkdir()
+    (output_dir / "registry_governance_manifest.json").write_text("{not json", encoding="utf-8")
+
+    verification = verify_registry_governance_pack(output_dir)
+
+    assert not verification.valid
+    assert verification.errors == ["governance manifest is not valid JSON: Expecting property name enclosed in double quotes"]
 
 
 def test_registry_export_rejects_unsafe_postgres_table_identifier(tmp_path: Path):
     with pytest.raises(ValueError, match="simple SQL identifier"):
         export_registry_snapshot(tmp_path / "experiments.sqlite", tmp_path / "export", postgres_table="runs;drop")
+
+
+def test_registry_export_rejects_invalid_governance_metadata(tmp_path: Path):
+    with pytest.raises(ValueError, match="owner must not be blank"):
+        export_registry_snapshot(tmp_path / "experiments.sqlite", tmp_path / "export", owner=" ")
+    with pytest.raises(ValueError, match="minimum_retention_days must be positive"):
+        export_registry_snapshot(tmp_path / "experiments.sqlite", tmp_path / "export", minimum_retention_days=0)
 
 
 def test_vendor_snapshot_source_loads_validated_snapshot_rows(tmp_path: Path):
@@ -247,5 +325,16 @@ def _manifest(run_id: str, report_path: Path) -> dict[str, object]:
                 "sharpe": 1.4,
                 "total_return": 0.2,
             },
+            "research_validity": {
+                "verdict": "PROMOTE",
+                "agent_p_value": 0.01,
+                "agent_q_value": 0.02,
+            },
+        },
+        "experiment_family": {
+            "family_id": "governance-family-v1",
+            "hypothesis_id": "governance-hypothesis",
+            "candidate_id": run_id,
+            "selection_policy": "pre_registered",
         },
     }
