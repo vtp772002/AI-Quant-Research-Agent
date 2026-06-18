@@ -204,7 +204,9 @@ def test_api_route_metadata_protects_non_health_routes():
     assert _route_total_dependencies(app, "/promotions/decide") == 1
     assert _route_total_dependencies(app, "/promotions/verify") == 1
     assert _route_total_dependencies(app, "/jobs/research") == 1
+    assert _route_total_dependencies(app, "/jobs/research/stale") == 1
     assert _route_total_dependencies(app, "/jobs/research/{job_id}") == 1
+    assert _route_total_dependencies(app, "/jobs/research/{job_id}/lease/renew") == 1
     assert _route_total_dependencies(app, "/jobs/research/{job_id}/events") == 1
 
 
@@ -407,6 +409,83 @@ def test_api_enqueues_and_queries_durable_research_jobs(monkeypatch, tmp_path: P
     assert [event["event_type"] for event in events["events"]] == ["enqueued"]
     assert events["events"][0]["detail"]["submitted_by"] == f"api:{researcher.actor_id}"
     assert "research-secret" not in json.dumps(events, sort_keys=True)
+
+
+def test_api_renews_research_job_lease_and_reports_stale_jobs(
+    monkeypatch,
+    tmp_path: Path,
+):
+    from datetime import UTC, datetime
+
+    from quant_research_agent.api import RenewResearchJobLeaseRequest
+    from quant_research_agent.research_job_queue import (
+        claim_research_job,
+        enqueue_research_job,
+    )
+
+    monkeypatch.setenv(
+        "AIQRA_API_KEYS",
+        "viewer-secret:viewer,research-secret:researcher",
+    )
+    clear_auth_cache()
+    queue_path = tmp_path / "research_jobs.sqlite"
+    app = create_app()
+    viewer = require_role("viewer")(_request(), "viewer-secret")
+    researcher = require_role("researcher")(_request(), "research-secret")
+    active_job = enqueue_research_job(
+        queue_path,
+        config_paths=[Path("configs/base.yaml")],
+        output_dir=tmp_path / "active_batch",
+        idempotency_key="api-renewal",
+    )
+    active_claim = claim_research_job(
+        queue_path,
+        worker_id="api-worker",
+        lease_seconds=300,
+    )
+    stale_anchor = datetime(2000, 1, 1, tzinfo=UTC)
+    stale_job = enqueue_research_job(
+        queue_path,
+        config_paths=[Path("configs/base.yaml")],
+        output_dir=tmp_path / "stale_batch",
+        idempotency_key="api-stale",
+        now=stale_anchor,
+    )
+    stale_claim = claim_research_job(
+        queue_path,
+        worker_id="stale-worker",
+        lease_seconds=30,
+        now=stale_anchor,
+    )
+    assert active_claim is not None
+    assert stale_claim is not None
+
+    renewed = _endpoint(app, "/jobs/research/{job_id}/lease/renew")(
+        job_id=active_job.job_id,
+        request=RenewResearchJobLeaseRequest(
+            queue_path=str(queue_path),
+            lease_token=str(active_claim.lease_token),
+            lease_seconds=600,
+        ),
+        principal=researcher,
+    )
+    stale = _endpoint(app, "/jobs/research/stale")(
+        queue_path=str(queue_path),
+        stale_after_seconds=60,
+        limit=20,
+        principal=viewer,
+    )
+    rendered = json.dumps({"renewed": renewed, "stale": stale}, sort_keys=True)
+
+    assert renewed["job_id"] == active_job.job_id
+    assert renewed["status"] == "running"
+    assert renewed["last_heartbeat_at"]
+    assert stale["jobs"][0]["job"]["job_id"] == stale_job.job_id
+    assert stale["jobs"][0]["stale_reason"] == "lease_expired"
+    assert "lease_token" not in rendered
+    assert "research-secret" not in rendered
+    assert str(active_claim.lease_token) not in rendered
+    assert str(stale_claim.lease_token) not in rendered
 
 
 def test_api_request_logs_include_sanitized_auth_context(monkeypatch):

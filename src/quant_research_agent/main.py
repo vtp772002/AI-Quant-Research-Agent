@@ -47,7 +47,10 @@ from quant_research_agent.registry_export import (
 from quant_research_agent.research_job_queue import (
     enqueue_research_job,
     get_research_job,
+    list_stale_research_jobs,
     list_research_jobs,
+    renew_research_job_lease,
+    research_job_stale_diagnostic_to_dict,
     research_job_to_dict,
 )
 from quant_research_agent.research_job_worker import (
@@ -132,7 +135,26 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="List durable research jobs.",
     )
+    parser.add_argument(
+        "--list-stale-research-jobs",
+        action="store_true",
+        help="List running research jobs with stale heartbeats or expired leases.",
+    )
     parser.add_argument("--show-research-job", help="Show one durable research job.")
+    parser.add_argument(
+        "--renew-research-job-lease",
+        help="Renew one active research job lease by job id.",
+    )
+    parser.add_argument(
+        "--job-lease-token",
+        help="Active lease token for internal research job lease renewal.",
+    )
+    parser.add_argument(
+        "--stale-after-seconds",
+        type=int,
+        default=300,
+        help="Heartbeat age threshold for --list-stale-research-jobs.",
+    )
     parser.add_argument(
         "--research-worker-run-once",
         action="store_true",
@@ -299,10 +321,42 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 0
 
+    if args.list_stale_research_jobs:
+        diagnostics = list_stale_research_jobs(
+            Path(args.job_queue_path),
+            stale_after_seconds=args.stale_after_seconds,
+            limit=args.limit or 100,
+        )
+        print(
+            json.dumps(
+                {
+                    "jobs": [
+                        research_job_stale_diagnostic_to_dict(diagnostic)
+                        for diagnostic in diagnostics
+                    ]
+                },
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 0
+
     if args.show_research_job:
         job = get_research_job(Path(args.job_queue_path), args.show_research_job)
         if job is None:
             raise SystemExit(f"research job not found: {args.show_research_job}")
+        print(json.dumps(research_job_to_dict(job), indent=2, sort_keys=True))
+        return 0
+
+    if args.renew_research_job_lease:
+        if not args.job_lease_token:
+            raise SystemExit("--renew-research-job-lease requires --job-lease-token")
+        job = renew_research_job_lease(
+            Path(args.job_queue_path),
+            job_id=args.renew_research_job_lease,
+            lease_token=args.job_lease_token,
+            lease_seconds=args.worker_lease_seconds,
+        )
         print(json.dumps(research_job_to_dict(job), indent=2, sort_keys=True))
         return 0
 

@@ -313,7 +313,12 @@ Lifecycle events use a monotonic SQLite sequence. Public CLI/API payloads redact
 lease tokens. Execution is at-least-once. A managed local worker loop can poll
 the queue repeatedly, stop after an idle cycle, a maximum job count, a maximum
 runtime, or SIGINT/SIGTERM, and return a machine-readable session summary with
-stop reason, processed count, idle cycles, and outcome counts.
+stop reason, processed count, idle cycles, and outcome counts. Active lease
+holders can renew a running job lease, which updates `lease_expires_at`,
+`last_heartbeat_at`, and a `lease_renewed` lifecycle event. Stale diagnostics
+report running jobs with expired leases, missing heartbeat data, or heartbeats
+older than the configured threshold. Lease tokens remain internal capabilities
+and are not written to event rows or public CLI/API payloads.
 
 Registry export writes newline-delimited JSON records, an export manifest, a
 reviewable Postgres upsert handoff SQL file, a governance manifest, and a
@@ -442,5 +447,5 @@ risk status. It does not compute forward returns or claim execution feasibility.
   immutable object storage, credentialed managed registry deployment,
   enterprise identity, tenant-scoped SaaS authorization, managed immutable
   promotion-ledger storage, managed HMAC key rotation, distributed provider
-  quota orchestration, distributed queue deployment, lease-renewal heartbeat
-  services, or a full production execution simulator.
+  quota orchestration, distributed queue deployment, automatic background lease
+  renewal, or a full production execution simulator.

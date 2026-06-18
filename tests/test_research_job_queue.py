@@ -266,6 +266,191 @@ def test_lease_is_inactive_at_its_exact_expiry_timestamp(tmp_path: Path):
         )
 
 
+def test_active_worker_can_renew_lease_and_heartbeat_without_exposing_token(tmp_path: Path):
+    from quant_research_agent.research_job_queue import (
+        claim_research_job,
+        enqueue_research_job,
+        renew_research_job_lease,
+        research_job_event_to_dict,
+        research_job_events,
+        research_job_to_dict,
+    )
+
+    queue_path = tmp_path / "research_jobs.sqlite"
+    job = enqueue_research_job(
+        queue_path,
+        config_paths=[Path("configs/base.yaml")],
+        output_dir=tmp_path / "batch",
+        idempotency_key="renew-active-lease",
+        now=NOW,
+    )
+    claimed = claim_research_job(
+        queue_path,
+        worker_id="worker-a",
+        lease_seconds=30,
+        now=NOW,
+    )
+    assert claimed is not None
+    assert claimed.lease_token
+
+    renewed = renew_research_job_lease(
+        queue_path,
+        job_id=job.job_id,
+        lease_token=str(claimed.lease_token),
+        lease_seconds=90,
+        now=NOW + timedelta(seconds=20),
+    )
+    events = [
+        research_job_event_to_dict(event)
+        for event in research_job_events(queue_path, job.job_id)
+    ]
+    rendered = json.dumps(
+        {"job": research_job_to_dict(renewed), "events": events},
+        sort_keys=True,
+    )
+
+    assert renewed.status == "running"
+    assert renewed.lease_expires_at == (NOW + timedelta(seconds=110)).isoformat(timespec="microseconds")
+    assert renewed.last_heartbeat_at == (NOW + timedelta(seconds=20)).isoformat(timespec="microseconds")
+    assert [event["event_type"] for event in events] == [
+        "enqueued",
+        "claimed",
+        "lease_renewed",
+    ]
+    assert events[-1]["worker_id"] == "worker-a"
+    assert events[-1]["detail"]["lease_expires_at"] == renewed.lease_expires_at
+    assert events[-1]["detail"]["last_heartbeat_at"] == renewed.last_heartbeat_at
+    assert "lease_token" not in research_job_to_dict(renewed)
+    assert str(claimed.lease_token) not in rendered
+
+
+def test_stale_holder_cannot_renew_after_lease_recovery(tmp_path: Path):
+    from quant_research_agent.research_job_queue import (
+        claim_research_job,
+        enqueue_research_job,
+        renew_research_job_lease,
+        research_job_events,
+    )
+
+    queue_path = tmp_path / "research_jobs.sqlite"
+    job = enqueue_research_job(
+        queue_path,
+        config_paths=[Path("configs/base.yaml")],
+        output_dir=tmp_path / "batch",
+        idempotency_key="stale-renewal",
+        max_attempts=3,
+        now=NOW,
+    )
+    first = claim_research_job(
+        queue_path,
+        worker_id="worker-a",
+        lease_seconds=30,
+        now=NOW,
+    )
+    assert first is not None
+    recovered = claim_research_job(
+        queue_path,
+        worker_id="worker-b",
+        lease_seconds=30,
+        now=NOW + timedelta(seconds=31),
+    )
+    assert recovered is not None
+
+    with pytest.raises(PermissionError, match="active lease"):
+        renew_research_job_lease(
+            queue_path,
+            job_id=job.job_id,
+            lease_token=str(first.lease_token),
+            lease_seconds=60,
+            now=NOW + timedelta(seconds=32),
+        )
+
+    renewed = renew_research_job_lease(
+        queue_path,
+        job_id=job.job_id,
+        lease_token=str(recovered.lease_token),
+        lease_seconds=60,
+        now=NOW + timedelta(seconds=32),
+    )
+
+    assert renewed.lease_owner == "worker-b"
+    assert renewed.last_heartbeat_at == (NOW + timedelta(seconds=32)).isoformat(timespec="microseconds")
+    assert [event.event_type for event in research_job_events(queue_path, job.job_id)] == [
+        "enqueued",
+        "claimed",
+        "lease_recovered",
+        "claimed",
+        "lease_renewed",
+    ]
+
+
+def test_stale_research_job_diagnostics_report_heartbeat_and_expired_leases(
+    tmp_path: Path,
+):
+    from quant_research_agent.research_job_queue import (
+        claim_research_job,
+        enqueue_research_job,
+        list_stale_research_jobs,
+        renew_research_job_lease,
+        research_job_stale_diagnostic_to_dict,
+    )
+
+    queue_path = tmp_path / "research_jobs.sqlite"
+    heartbeat_job = enqueue_research_job(
+        queue_path,
+        config_paths=[Path("configs/base.yaml")],
+        output_dir=tmp_path / "batch-a",
+        idempotency_key="heartbeat-stale",
+        now=NOW,
+    )
+    expiring_job = enqueue_research_job(
+        queue_path,
+        config_paths=[Path("configs/base.yaml")],
+        output_dir=tmp_path / "batch-b",
+        idempotency_key="lease-expired",
+        now=NOW,
+    )
+    heartbeat_claim = claim_research_job(
+        queue_path,
+        worker_id="worker-a",
+        lease_seconds=300,
+        now=NOW,
+    )
+    assert heartbeat_claim is not None
+    expiring_claim = claim_research_job(
+        queue_path,
+        worker_id="worker-b",
+        lease_seconds=30,
+        now=NOW,
+    )
+    assert expiring_claim is not None
+    renew_research_job_lease(
+        queue_path,
+        job_id=heartbeat_job.job_id,
+        lease_token=str(heartbeat_claim.lease_token),
+        lease_seconds=300,
+        now=NOW + timedelta(seconds=40),
+    )
+
+    diagnostics = list_stale_research_jobs(
+        queue_path,
+        stale_after_seconds=30,
+        now=NOW + timedelta(seconds=75),
+    )
+    payloads = [research_job_stale_diagnostic_to_dict(item) for item in diagnostics]
+    by_job = {payload["job"]["job_id"]: payload for payload in payloads}
+    rendered = json.dumps(payloads, sort_keys=True)
+
+    assert by_job[heartbeat_job.job_id]["stale_reason"] == "heartbeat_stale"
+    assert by_job[heartbeat_job.job_id]["last_heartbeat_at"] == (
+        NOW + timedelta(seconds=40)
+    ).isoformat(timespec="microseconds")
+    assert by_job[expiring_job.job_id]["stale_reason"] == "lease_expired"
+    assert "lease_token" not in rendered
+    assert str(heartbeat_claim.lease_token) not in rendered
+    assert str(expiring_claim.lease_token) not in rendered
+
+
 def test_failure_retries_then_moves_job_to_dead_letter(tmp_path: Path):
     from quant_research_agent.research_job_queue import (
         claim_research_job,
@@ -725,6 +910,55 @@ def test_research_job_cli_worker_loop_returns_supervision_summary(
     assert payload["jobs_processed"] == 1
     assert payload["outcome_counts"] == {"completed": 1}
     assert payload["idle_cycles"] == 1
+
+
+def test_research_job_cli_renews_active_lease_without_printing_token(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+):
+    from quant_research_agent.main import main
+    from quant_research_agent.research_job_queue import (
+        claim_research_job,
+        enqueue_research_job,
+    )
+
+    queue_path = tmp_path / "research_jobs.sqlite"
+    job = enqueue_research_job(
+        queue_path,
+        config_paths=[Path("configs/base.yaml")],
+        output_dir=tmp_path / "batch",
+        idempotency_key="cli-renewal",
+        now=NOW,
+    )
+    claimed = claim_research_job(
+        queue_path,
+        worker_id="cli-worker",
+        lease_seconds=300,
+        now=NOW,
+    )
+    assert claimed is not None
+    assert claimed.lease_token
+
+    code = main(
+        [
+            "--renew-research-job-lease",
+            job.job_id,
+            "--job-queue-path",
+            str(queue_path),
+            "--job-lease-token",
+            str(claimed.lease_token),
+            "--worker-lease-seconds",
+            "600",
+        ]
+    )
+    payload = json.loads(capsys.readouterr().out)
+    rendered = json.dumps(payload, sort_keys=True)
+
+    assert code == 0
+    assert payload["status"] == "running"
+    assert payload["last_heartbeat_at"]
+    assert "lease_token" not in rendered
+    assert str(claimed.lease_token) not in rendered
 
 
 def _config_yaml(tmp_path: Path) -> str:

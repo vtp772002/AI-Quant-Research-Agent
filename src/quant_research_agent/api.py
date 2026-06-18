@@ -36,7 +36,10 @@ from quant_research_agent.promotion_authorization import (
 from quant_research_agent.research_job_queue import (
     enqueue_research_job,
     get_research_job,
+    list_stale_research_jobs,
     list_research_jobs,
+    renew_research_job_lease,
+    research_job_stale_diagnostic_to_dict,
     research_job_event_to_dict,
     research_job_events,
     research_job_to_dict,
@@ -91,6 +94,12 @@ class EnqueueResearchJobRequest(BaseModel):
     limit: int | None = None
     max_attempts: int = 3
     queue_path: str = "results/research_jobs.sqlite"
+
+
+class RenewResearchJobLeaseRequest(BaseModel):
+    queue_path: str = "results/research_jobs.sqlite"
+    lease_token: str
+    lease_seconds: int = 300
 
 
 def create_app() -> FastAPI:
@@ -329,6 +338,27 @@ def create_app() -> FastAPI:
             }
         )
 
+    @app.get("/jobs/research/stale")
+    def stale_research_jobs(
+        queue_path: str = "results/research_jobs.sqlite",
+        stale_after_seconds: int = 300,
+        limit: int = 20,
+        principal: ApiPrincipal = Depends(require_role("viewer")),
+    ) -> dict[str, object]:
+        _ = principal
+        return _job_payload(
+            lambda: {
+                "jobs": [
+                    research_job_stale_diagnostic_to_dict(diagnostic)
+                    for diagnostic in list_stale_research_jobs(
+                        Path(queue_path),
+                        stale_after_seconds=stale_after_seconds,
+                        limit=limit,
+                    )
+                ]
+            }
+        )
+
     @app.get("/jobs/research/{job_id}")
     def research_job(
         job_id: str,
@@ -340,6 +370,24 @@ def create_app() -> FastAPI:
         if job is None:
             raise HTTPException(status_code=404, detail=f"research job not found: {job_id}")
         return research_job_to_dict(job)
+
+    @app.post("/jobs/research/{job_id}/lease/renew")
+    def renew_research_job(
+        job_id: str,
+        request: RenewResearchJobLeaseRequest,
+        principal: ApiPrincipal = Depends(require_role("researcher")),
+    ) -> dict[str, object]:
+        _ = principal
+        return _job_payload(
+            lambda: research_job_to_dict(
+                renew_research_job_lease(
+                    Path(request.queue_path),
+                    job_id=job_id,
+                    lease_token=request.lease_token,
+                    lease_seconds=request.lease_seconds,
+                )
+            )
+        )
 
     @app.get("/jobs/research/{job_id}/events")
     def research_job_event_log(

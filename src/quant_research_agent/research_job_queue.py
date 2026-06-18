@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS research_jobs (
     lease_owner TEXT,
     lease_token TEXT,
     lease_expires_at TEXT,
+    last_heartbeat_at TEXT,
     result_json TEXT,
     error_json TEXT,
     created_at TEXT NOT NULL,
@@ -79,6 +80,7 @@ class ResearchJob:
     lease_owner: str | None
     lease_token: str | None
     lease_expires_at: str | None
+    last_heartbeat_at: str | None
     result: dict[str, Any] | None
     error: dict[str, Any] | None
     created_at: str
@@ -99,10 +101,22 @@ class ResearchJobEvent:
     created_at: str
 
 
+@dataclass(frozen=True)
+class ResearchJobStaleDiagnostic:
+    job: ResearchJob
+    stale_reason: str
+    observed_at: str
+    stale_after_seconds: int
+    last_heartbeat_at: str | None
+    lease_expires_at: str | None
+    heartbeat_age_seconds: float | None
+
+
 def initialize_research_job_queue(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with _connect(path) as connection:
         connection.executescript(SCHEMA)
+        _ensure_research_job_columns(connection)
 
 
 def enqueue_research_job(
@@ -312,6 +326,7 @@ def claim_research_job(
                 lease_owner = ?,
                 lease_token = ?,
                 lease_expires_at = ?,
+                last_heartbeat_at = ?,
                 started_at = COALESCE(started_at, ?),
                 updated_at = ?
             WHERE job_id = ?
@@ -320,6 +335,7 @@ def claim_research_job(
                 worker_id,
                 lease_token,
                 lease_expires_at,
+                timestamp,
                 timestamp,
                 timestamp,
                 job_id,
@@ -478,6 +494,60 @@ def fail_research_job(
     return _job_from_row(failed)
 
 
+def renew_research_job_lease(
+    path: Path,
+    *,
+    job_id: str,
+    lease_token: str,
+    lease_seconds: int = 300,
+    now: datetime | None = None,
+) -> ResearchJob:
+    if lease_seconds < 1:
+        raise ValueError("lease_seconds must be positive")
+    initialize_research_job_queue(path)
+    current = now or datetime.now(UTC)
+    timestamp = _timestamp(current)
+    lease_expires_at = _timestamp(current + timedelta(seconds=lease_seconds))
+    with _connect(path) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        row = connection.execute(
+            "SELECT * FROM research_jobs WHERE job_id = ?",
+            (job_id,),
+        ).fetchone()
+        if row is None:
+            raise KeyError(f"research job not found: {job_id}")
+        _require_active_lease(row, lease_token, timestamp)
+        connection.execute(
+            """
+            UPDATE research_jobs
+            SET lease_expires_at = ?,
+                last_heartbeat_at = ?,
+                updated_at = ?
+            WHERE job_id = ?
+            """,
+            (lease_expires_at, timestamp, timestamp, job_id),
+        )
+        _append_event(
+            connection,
+            job_id=job_id,
+            event_type="lease_renewed",
+            from_status="running",
+            to_status="running",
+            worker_id=row["lease_owner"],
+            created_at=timestamp,
+            detail={
+                "lease_expires_at": lease_expires_at,
+                "last_heartbeat_at": timestamp,
+            },
+        )
+        renewed = connection.execute(
+            "SELECT * FROM research_jobs WHERE job_id = ?",
+            (job_id,),
+        ).fetchone()
+    assert renewed is not None
+    return _job_from_row(renewed)
+
+
 def get_research_job(path: Path, job_id: str) -> ResearchJob | None:
     initialize_research_job_queue(path)
     with _connect(path) as connection:
@@ -503,6 +573,50 @@ def list_research_jobs(path: Path, *, limit: int = 100) -> list[ResearchJob]:
             (limit,),
         ).fetchall()
     return [_job_from_row(row) for row in rows]
+
+
+def list_stale_research_jobs(
+    path: Path,
+    *,
+    stale_after_seconds: int = 300,
+    limit: int = 100,
+    now: datetime | None = None,
+) -> list[ResearchJobStaleDiagnostic]:
+    if stale_after_seconds < 1:
+        raise ValueError("stale_after_seconds must be positive")
+    if limit < 1:
+        raise ValueError("limit must be positive")
+    initialize_research_job_queue(path)
+    current = now or datetime.now(UTC)
+    timestamp = _timestamp(current)
+    stale_before = _timestamp(current - timedelta(seconds=stale_after_seconds))
+    with _connect(path) as connection:
+        rows = connection.execute(
+            """
+            SELECT *
+            FROM research_jobs
+            WHERE status = 'running'
+              AND (
+                lease_expires_at <= ?
+                OR last_heartbeat_at IS NULL
+                OR last_heartbeat_at <= ?
+              )
+            ORDER BY created_at, rowid
+            LIMIT ?
+            """,
+            (timestamp, stale_before, limit),
+        ).fetchall()
+    return [
+        _stale_diagnostic_from_job(
+            _job_from_row(row),
+            observed_at=timestamp,
+            stale_after_seconds=stale_after_seconds,
+            observed_datetime=current.astimezone(UTC)
+            if current.tzinfo is not None
+            else current.replace(tzinfo=UTC),
+        )
+        for row in rows
+    ]
 
 
 def research_job_events(path: Path, job_id: str) -> list[ResearchJobEvent]:
@@ -534,6 +648,7 @@ def research_job_to_dict(job: ResearchJob) -> dict[str, Any]:
         "available_at": job.available_at,
         "lease_owner": job.lease_owner,
         "lease_expires_at": job.lease_expires_at,
+        "last_heartbeat_at": job.last_heartbeat_at,
         "result": job.result,
         "error": job.error,
         "created_at": job.created_at,
@@ -556,12 +671,37 @@ def research_job_event_to_dict(event: ResearchJobEvent) -> dict[str, Any]:
     }
 
 
+def research_job_stale_diagnostic_to_dict(
+    diagnostic: ResearchJobStaleDiagnostic,
+) -> dict[str, Any]:
+    return {
+        "job": research_job_to_dict(diagnostic.job),
+        "stale_reason": diagnostic.stale_reason,
+        "observed_at": diagnostic.observed_at,
+        "stale_after_seconds": diagnostic.stale_after_seconds,
+        "last_heartbeat_at": diagnostic.last_heartbeat_at,
+        "lease_expires_at": diagnostic.lease_expires_at,
+        "heartbeat_age_seconds": diagnostic.heartbeat_age_seconds,
+    }
+
+
 def _connect(path: Path) -> Connection:
     connection = connect(path, timeout=30.0)
     connection.row_factory = Row
     connection.execute("PRAGMA foreign_keys = ON")
     connection.execute("PRAGMA busy_timeout = 30000")
     return connection
+
+
+def _ensure_research_job_columns(connection: Connection) -> None:
+    columns = {
+        row[1]
+        for row in connection.execute("PRAGMA table_info(research_jobs)").fetchall()
+    }
+    if "last_heartbeat_at" not in columns:
+        connection.execute(
+            "ALTER TABLE research_jobs ADD COLUMN last_heartbeat_at TEXT"
+        )
 
 
 def _append_event(
@@ -611,6 +751,7 @@ def _job_from_row(row: Row) -> ResearchJob:
         lease_owner=row["lease_owner"],
         lease_token=row["lease_token"],
         lease_expires_at=row["lease_expires_at"],
+        last_heartbeat_at=row["last_heartbeat_at"],
         result=json.loads(row["result_json"]) if row["result_json"] else None,
         error=json.loads(row["error_json"]) if row["error_json"] else None,
         created_at=str(row["created_at"]),
@@ -633,6 +774,35 @@ def _event_from_row(row: Row) -> ResearchJobEvent:
     )
 
 
+def _stale_diagnostic_from_job(
+    job: ResearchJob,
+    *,
+    observed_at: str,
+    stale_after_seconds: int,
+    observed_datetime: datetime,
+) -> ResearchJobStaleDiagnostic:
+    if job.lease_expires_at is not None and job.lease_expires_at <= observed_at:
+        reason = "lease_expired"
+    elif job.last_heartbeat_at is None:
+        reason = "missing_heartbeat"
+    else:
+        reason = "heartbeat_stale"
+    heartbeat_age = (
+        (observed_datetime - _parse_timestamp(job.last_heartbeat_at)).total_seconds()
+        if job.last_heartbeat_at is not None
+        else None
+    )
+    return ResearchJobStaleDiagnostic(
+        job=job,
+        stale_reason=reason,
+        observed_at=observed_at,
+        stale_after_seconds=stale_after_seconds,
+        last_heartbeat_at=job.last_heartbeat_at,
+        lease_expires_at=job.lease_expires_at,
+        heartbeat_age_seconds=heartbeat_age,
+    )
+
+
 def _require_active_lease(row: Row, lease_token: str, timestamp: str) -> None:
     if (
         row["status"] != "running"
@@ -641,6 +811,13 @@ def _require_active_lease(row: Row, lease_token: str, timestamp: str) -> None:
         or str(row["lease_expires_at"]) <= timestamp
     ):
         raise PermissionError("research job mutation requires the active lease")
+
+
+def _parse_timestamp(value: str) -> datetime:
+    parsed = datetime.fromisoformat(value)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
 
 
 def _timestamp(value: datetime | None = None) -> str:
