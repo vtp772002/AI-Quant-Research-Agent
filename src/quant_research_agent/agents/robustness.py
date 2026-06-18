@@ -31,6 +31,7 @@ class SensitivityResult:
     quantile: float
     cost_multiplier: float
     metrics: dict[str, float]
+    backtest: BacktestResult
 
 
 @dataclass(frozen=True)
@@ -135,6 +136,7 @@ def _parameter_sensitivity(
                     quantile=quantile,
                     cost_multiplier=1.0,
                     metrics=result.metrics["test"],
+                    backtest=result,
                 )
             )
     return results
@@ -168,6 +170,7 @@ def _cost_sensitivity(
                 quantile=config.experiment.backtest.quantile,
                 cost_multiplier=multiplier,
                 metrics=result.metrics["test"],
+                backtest=result,
             )
         )
     return results
