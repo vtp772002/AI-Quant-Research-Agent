@@ -20,7 +20,8 @@ class ReportAgent:
         full = result.backtest.metrics["full"]
         train = result.backtest.metrics["train"]
         test = result.backtest.metrics["test"]
-        decision = _decision_summary(test)
+        holdout = result.backtest.metrics["holdout"]
+        decision = _decision_summary(result)
         actual_universe_size = result.market_data.index.get_level_values("symbol").nunique()
 
         return "\n".join(
@@ -73,6 +74,7 @@ class ReportAgent:
                     {
                         "Train": train,
                         "Test": test,
+                        "Holdout": holdout,
                         "Full": full,
                     }
                 ),
@@ -113,6 +115,10 @@ class ReportAgent:
                 "",
                 _walk_forward_strategy_table(result),
                 "",
+                "## Research Validity Gate",
+                "",
+                _research_validity_section(result),
+                "",
                 "## Interpretation",
                 "",
                 decision,
@@ -129,7 +135,7 @@ class ReportAgent:
                 "",
                 _walk_forward_interpretation(result),
                 "",
-                "The train/test split is chronological. Test-period results are the primary evidence because they are less exposed to factor selection bias.",
+                "The train/validation/holdout split is chronological. Validation-period results remain compatibility `test` metrics; holdout-period results drive the research validity gate.",
                 "",
                 "## Limitations",
                 "",
@@ -507,21 +513,110 @@ def _data_integrity_warnings(result: ResearchRunResult) -> str:
     return "\n".join(["Warnings:"] + [f"- {warning}" for warning in warnings])
 
 
-def _decision_summary(metrics: dict[str, float]) -> str:
+def _research_validity_section(result: ResearchRunResult) -> str:
+    validity = result.research_validity
+    candidate_rows = [
+        "| Candidate | Family | Holdout Obs | Holdout IC | Holdout Sharpe | Holdout Return | p-value | FDR q-value |",
+        "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+    ]
+    for candidate in validity.candidates:
+        candidate_rows.append(
+            "| {name} | {family} | {observations} | {ic:.4f} | {sharpe:.2f} | {total_return:.2%} | {p_value:.4f} | {q_value:.4f} |".format(
+                name=candidate.name,
+                family=candidate.family,
+                observations=candidate.holdout_observations,
+                ic=candidate.holdout_ic_mean,
+                sharpe=candidate.holdout_sharpe,
+                total_return=candidate.holdout_total_return,
+                p_value=candidate.p_value,
+                q_value=candidate.q_value,
+            )
+        )
+
+    check_rows = [
+        "| Check | Required | Status | Observed | Threshold | Reason |",
+        "| --- | --- | --- | ---: | --- | --- |",
+    ]
+    for check in validity.checks:
+        check_rows.append(
+            "| {name} | {required} | {status} | {observed} | {threshold} | {reason} |".format(
+                name=check.name,
+                required=_yes_no(check.required),
+                status=_check_status(check.passed),
+                observed=_format_check_value(check.observed),
+                threshold=_format_check_value(check.threshold),
+                reason=check.reason,
+            )
+        )
+
+    reasons = (
+        "No required validity checks failed."
+        if not validity.reasons
+        else "\n".join(["Reasons preventing promotion:"] + [f"- {reason}" for reason in validity.reasons])
+    )
+    return "\n".join(
+        [
+            f"Verdict: `{validity.verdict}`",
+            f"Gate enabled: {_yes_no(validity.enabled)}",
+            f"Train ends: `{validity.train_end}`",
+            f"Validation starts: `{validity.validation_start}`",
+            f"Holdout starts: `{validity.holdout_start or 'not configured'}`",
+            f"FDR alpha: {validity.fdr_alpha:.2f}",
+            "",
+            "\n".join(candidate_rows),
+            "",
+            "\n".join(check_rows),
+            "",
+            reasons,
+        ]
+    )
+
+
+def _decision_summary(result: ResearchRunResult) -> str:
+    validity = result.research_validity
+    metrics = result.backtest.metrics["test"]
+    if validity.verdict == "PROMOTE":
+        return (
+            "The research validity gate promotes this signal for the next research stage. "
+            "Promotion is still not investment approval; it means the configured holdout, FDR, baseline, stability, and data checks passed."
+        )
+    if validity.verdict == "REVIEW":
+        return (
+            "The research validity gate requires human review before this signal can advance. "
+            "Core evidence may be acceptable, but at least one comparative, stability, or data-readiness requirement needs inspection."
+        )
     if metrics["ic_mean"] > 0 and metrics["sharpe"] > 0:
         return (
-            "The signal is a candidate for deeper research: out-of-sample IC and Sharpe are positive. "
-            "The next question is whether the effect survives real data, costs, and neutralization."
+            "The research validity gate rejects promotion even though validation IC and Sharpe are positive. "
+            "Use the failed holdout or FDR checks as the next iteration target."
         )
     if metrics["ic_mean"] > 0:
         return (
-            "The signal shows positive out-of-sample rank correlation but weak portfolio conversion. "
+            "The research validity gate rejects promotion. The signal shows positive validation rank correlation but weak portfolio conversion. "
             "Investigate turnover, concentration, and whether the long/short cutoffs are too aggressive."
         )
     return (
-        "The signal is not supported out-of-sample in this run. Treat it as rejected until a more robust "
+        "The research validity gate rejects promotion. The signal is not supported in validation in this run. Treat it as rejected until a more robust "
         "variant improves IC stability without increasing overfit risk."
     )
+
+
+def _check_status(value: bool | None) -> str:
+    if value is True:
+        return "pass"
+    if value is False:
+        return "fail"
+    return "not_applicable"
+
+
+def _format_check_value(value) -> str:
+    if isinstance(value, bool):
+        return _yes_no(value)
+    if isinstance(value, float):
+        return f"{value:.4f}"
+    if value is None:
+        return "not_applicable"
+    return str(value)
 
 
 def _baseline_table(result: ResearchRunResult) -> str:

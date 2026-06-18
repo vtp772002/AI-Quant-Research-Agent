@@ -252,6 +252,15 @@ def test_research_workflow_produces_metrics_and_report(tmp_path: Path):
                     "walk_forward": {
                         "window_count": 3,
                         "min_train_fraction": 0.4,
+                    },
+                    "research_validity": {
+                        "enabled": True,
+                        "holdout_fraction": 0.15,
+                        "fdr_alpha": 0.25,
+                        "require_positive_return": True,
+                        "require_baseline_outperformance": True,
+                        "require_walk_forward_stability": True,
+                        "require_data_readiness": True,
                     }
                 },
                 "stress_tests": {
@@ -338,6 +347,15 @@ def test_research_workflow_produces_metrics_and_report(tmp_path: Path):
     assert len(result.capacity.capacity_curve) == 3
     assert result.capacity.capacity_curve[-1].max_trade_participation >= result.capacity.capacity_curve[0].max_trade_participation
     assert any(item.participation_breach_count > 0 for item in result.capacity.capacity_curve)
+    assert result.research_validity.verdict in {"PROMOTE", "REVIEW", "REJECT"}
+    assert result.research_validity.enabled
+    assert result.research_validity.holdout_start
+    assert {candidate.name for candidate in result.research_validity.candidates}.issuperset(
+        {"agent_signal", "momentum_20d_only", "reversal_20d_only", "random_cross_section"}
+    )
+    assert {check.name for check in result.research_validity.checks}.issuperset(
+        {"positive_holdout_sharpe", "fdr_significant", "data_ready"}
+    )
     assert len(result.backtest.walk_forward) == 3
     assert result.backtest.walk_forward[0].metrics["observations"] > 0
     assert result.factor_diagnostics.selected_factors == ["momentum_20d", "volatility_20d", "reversal_20d"]
@@ -370,6 +388,10 @@ def test_research_workflow_produces_metrics_and_report(tmp_path: Path):
     assert "Robustness Diagnostics" in report_text
     assert "Avg borrow cost" in report_text
     assert "Stress Tests" in report_text
+    assert "Research Validity Gate" in report_text
+    assert f"Verdict: `{result.research_validity.verdict}`" in report_text
+    assert "FDR q-value" in report_text
+    assert "positive_holdout_sharpe" in report_text
     assert "sector_neutral_signal" in report_text
     assert "liquidity_top_80pct" in report_text
     assert "Walk-Forward Validation" in report_text

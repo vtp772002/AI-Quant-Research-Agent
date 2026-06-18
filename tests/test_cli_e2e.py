@@ -144,6 +144,10 @@ report:
     assert payload["metrics"]["test"]["average_total_cost"] > 0
     assert payload["metrics"]["test"]["average_impact_cost"] > 0
     assert payload["metrics"]["test"]["average_borrow_cost"] > 0
+    assert payload["metrics"]["holdout"]["observations"] == 0.0
+    assert payload["research_validity"]["verdict"] in {"PROMOTE", "REVIEW", "REJECT"}
+    assert payload["research_validity"]["enabled"] is False
+    assert payload["research_validity"]["candidates"][0]["name"] == "agent_signal"
     assert payload["shorting"]["locate_history_path"] == str(locate_path)
     assert payload["borrow_availability"]["unavailable_rows"] > 0
     assert payload["borrow_availability"]["hard_to_borrow_rows"] > 0

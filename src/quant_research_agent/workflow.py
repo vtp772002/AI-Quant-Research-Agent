@@ -6,6 +6,7 @@ from typing import Any
 
 from quant_research_agent.agents.evaluator_agent import ResearchRunResult, run_research_workflow
 from quant_research_agent.agents.report_agent import ReportAgent, write_experiment_row
+from quant_research_agent.agents.research_validity import research_validity_to_dict
 from quant_research_agent.config import AppConfig, load_config
 from quant_research_agent.experiment_registry import ExperimentRunRecord, record_run, record_to_dict
 from quant_research_agent.reproducibility import (
@@ -107,6 +108,7 @@ def workflow_payload(
         "factor_diagnostics": _factor_diagnostics_payload(result),
         "robustness": _robustness_payload(result),
         "capacity": _capacity_payload(result),
+        "research_validity": research_validity_to_dict(result.research_validity),
     }
 
 

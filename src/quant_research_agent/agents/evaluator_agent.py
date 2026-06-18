@@ -9,6 +9,11 @@ from quant_research_agent.agents.capacity import CapacityDiagnostics, compute_ca
 from quant_research_agent.agents.factor_agent import FactorAgent
 from quant_research_agent.agents.hypothesis_agent import Hypothesis, HypothesisAgent
 from quant_research_agent.agents.robustness import RobustnessDiagnostics, compute_robustness_diagnostics
+from quant_research_agent.agents.research_validity import (
+    BacktestResultCandidate,
+    ResearchValidityResult,
+    evaluate_research_validity,
+)
 from quant_research_agent.agents.stress_tests import evaluate_stress_tests
 from quant_research_agent.backtest.engine import BacktestResult, run_long_short_backtest
 from quant_research_agent.config import AppConfig
@@ -40,6 +45,7 @@ class ResearchRunResult:
     factor_diagnostics: FactorDiagnostics
     robustness: RobustnessDiagnostics
     capacity: CapacityDiagnostics
+    research_validity: ResearchValidityResult
 
 
 def run_research_workflow(config: AppConfig) -> ResearchRunResult:
@@ -141,6 +147,21 @@ def run_research_workflow(config: AppConfig) -> ResearchRunResult:
         config=config,
         borrow_availability=borrow_availability,
     )
+    research_validity = evaluate_research_validity(
+        config=config,
+        agent=backtest,
+        baselines=baselines,
+        stress_tests=stress_tests,
+        parameter_variants=[
+            BacktestResultCandidate(item.name, item.backtest)
+            for item in robustness.parameter_sensitivity
+        ],
+        cost_variants=[
+            BacktestResultCandidate(item.name, item.backtest)
+            for item in robustness.cost_sensitivity
+        ],
+        data_integrity=data_integrity,
+    )
     return ResearchRunResult(
         hypothesis=hypothesis,
         universe=universe,
@@ -155,4 +176,5 @@ def run_research_workflow(config: AppConfig) -> ResearchRunResult:
         factor_diagnostics=factor_diagnostics,
         robustness=robustness,
         capacity=capacity,
+        research_validity=research_validity,
     )
