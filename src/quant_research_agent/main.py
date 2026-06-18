@@ -3,7 +3,9 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import signal
 from pathlib import Path
+from threading import Event
 
 from quant_research_agent.execution_simulator import (
     execution_simulation_to_dict,
@@ -49,7 +51,9 @@ from quant_research_agent.research_job_queue import (
     research_job_to_dict,
 )
 from quant_research_agent.research_job_worker import (
+    research_worker_loop_summary_to_dict,
     research_worker_result_to_dict,
+    run_research_worker_loop,
     run_research_worker_once,
 )
 from quant_research_agent.llm_provider import ProviderControlPolicy
@@ -134,18 +138,44 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Claim and execute at most one durable research job.",
     )
+    parser.add_argument(
+        "--research-worker-loop",
+        action="store_true",
+        help="Run a supervised durable research worker loop.",
+    )
     parser.add_argument("--worker-id", default="local-worker", help="Worker id recorded in job leases and events.")
     parser.add_argument(
         "--worker-lease-seconds",
         type=int,
         default=300,
-        help="Lease duration for --research-worker-run-once.",
+        help="Worker lease duration.",
     )
     parser.add_argument(
         "--worker-retry-delay-seconds",
         type=int,
         default=60,
         help="Retry delay after a failed worker attempt.",
+    )
+    parser.add_argument(
+        "--worker-poll-seconds",
+        type=float,
+        default=5.0,
+        help="Idle poll delay for --research-worker-loop.",
+    )
+    parser.add_argument(
+        "--worker-max-jobs",
+        type=int,
+        help="Maximum jobs processed before --research-worker-loop stops.",
+    )
+    parser.add_argument(
+        "--worker-max-runtime-seconds",
+        type=float,
+        help="Maximum runtime before --research-worker-loop stops.",
+    )
+    parser.add_argument(
+        "--worker-stop-when-idle",
+        action="store_true",
+        help="Stop --research-worker-loop after the first idle poll.",
     )
     parser.add_argument(
         "--export-registry",
@@ -291,6 +321,29 @@ def main(argv: list[str] | None = None) -> int:
             )
         )
         return 0 if result.outcome in {"idle", "completed"} else 1
+
+    if args.research_worker_loop:
+        stop_event = _install_worker_stop_handlers()
+        summary = run_research_worker_loop(
+            Path(args.job_queue_path),
+            worker_id=args.worker_id,
+            lease_seconds=args.worker_lease_seconds,
+            retry_delay_seconds=args.worker_retry_delay_seconds,
+            poll_seconds=args.worker_poll_seconds,
+            max_jobs=args.worker_max_jobs,
+            max_runtime_seconds=args.worker_max_runtime_seconds,
+            stop_when_idle=args.worker_stop_when_idle,
+            stop_requested=stop_event.is_set,
+        )
+        print(
+            json.dumps(
+                research_worker_loop_summary_to_dict(summary),
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        terminal_failures = {"dead_letter", "lease_lost"}
+        return 1 if terminal_failures.intersection(summary.outcome_counts) else 0
 
     if args.recommend_family_promotion:
         if not args.promotion_family_id or not args.promotion_run_id:
@@ -611,6 +664,17 @@ def _promotion_signing_key() -> str:
             "family promotion commands require AIQRA_PROMOTION_LEDGER_HMAC_KEY with at least 16 characters"
         )
     return signing_key
+
+
+def _install_worker_stop_handlers() -> Event:
+    stop_event = Event()
+
+    def request_stop(signum, frame):
+        stop_event.set()
+
+    signal.signal(signal.SIGINT, request_stop)
+    signal.signal(signal.SIGTERM, request_stop)
+    return stop_event
 
 
 if __name__ == "__main__":

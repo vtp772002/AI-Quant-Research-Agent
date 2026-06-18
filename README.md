@@ -108,6 +108,8 @@ Run a scheduled-style research batch and publish comparison artifacts:
 ```bash
 python -m quant_research_agent.main --run-batch configs/base.yaml configs/point_in_time_synthetic_demo.yaml --batch-output-dir results/daily
 AIQRA_CONFIGS="configs/base.yaml configs/institutional_snapshot_demo.yaml" scripts/run_daily_research.sh
+AIQRA_DAILY_MODE=enqueue AIQRA_JOB_IDEMPOTENCY_KEY=daily-2026-06-19 scripts/run_daily_research.sh
+AIQRA_DAILY_MODE=worker AIQRA_WORKER_MAX_JOBS=5 AIQRA_PYTHON=.venv/bin/python scripts/run_daily_research.sh
 ```
 
 Enqueue and execute durable research jobs:
@@ -119,14 +121,17 @@ python -m quant_research_agent.main \
   --job-output-dir results/jobs/daily-2026-06-19
 python -m quant_research_agent.main --list-research-jobs
 python -m quant_research_agent.main --research-worker-run-once --worker-id local-worker-1
+python -m quant_research_agent.main --research-worker-loop --worker-id local-worker-1 --worker-stop-when-idle
 python -m quant_research_agent.main --show-research-job <job_id>
 ```
 
 The queue defaults to `results/research_jobs.sqlite`. Enqueue is idempotent,
 workers transactionally lease one eligible job, expired leases can be
 recovered, and failures retry up to the job's attempt budget before dead
-letter. Worker execution delegates to the existing batch workflow. Public
-CLI/API payloads expose lease owner and expiry but never the lease token.
+letter. Worker execution delegates to the existing batch workflow. The worker
+loop can stop after an idle poll, job budget, runtime budget, or SIGINT/SIGTERM
+and returns a JSON session summary. Public CLI/API payloads expose lease owner
+and expiry but never the lease token.
 
 Export the local registry for object-store/Postgres handoff:
 
@@ -296,7 +301,7 @@ The research report includes:
   batch summaries plus comparison artifacts.
 - Durable SQLite research-job queue with idempotent submission, transactional
   leases, expired-lease recovery, retry/dead-letter states, lifecycle events,
-  and a one-shot worker.
+  one-shot worker execution, and a bounded local worker loop.
 - Offline registry export artifacts for object-store and Postgres migration
   handoff review, including an immutable governance manifest, artifact hashes,
   retention metadata, family evidence, and a verifiable hash chain.
@@ -334,8 +339,8 @@ The research report includes:
 - Two-person family-promotion authorization with researcher recommendation,
   distinct operator decision, frozen comparison evidence, and a verifiable
   append-only hash-chain ledger.
-- Durable local research-job queue and one-shot worker for recoverable scheduled
-  batch execution.
+- Durable local research-job queue, one-shot worker, and bounded local worker
+  loop for recoverable scheduled batch execution.
 
 ## Validation
 
@@ -400,15 +405,14 @@ Implemented Level 1 foundations:
   report/manifest/registry evidence.
 - Two-person family-promotion authorization through CLI and role-scoped API
   operations, with frozen evidence and tamper verification.
-- Durable local research-job queue and one-shot worker for recoverable scheduled
-  batch execution.
+- Durable local research-job queue and bounded local worker loop for recoverable
+  scheduled batch execution.
 
 Deferred until separate stories:
 
 - Credentialed managed Postgres/object-lock provider deployment with applied
   migrations and enforced retention policy.
-- Managed worker supervision, distributed scheduling, and external queue
-  deployment.
+- Distributed scheduling and external queue deployment.
 - Multi-user SaaS controls beyond local API-key roles and two-person promotion.
 - Live commercial data vendor API integration with credentials and rate-limit handling.
 - Paper trading, broker integration, hard risk gates, reconciliation, and kill switch controls.

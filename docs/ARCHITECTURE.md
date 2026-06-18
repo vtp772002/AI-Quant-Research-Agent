@@ -55,7 +55,8 @@ quant_research_agent.managed_registry
 
 quant_research_agent.research_job_queue / research_job_worker
   durable local batch job state, transactional leases, retry/dead-letter
-  transitions, lifecycle events, and one-shot worker execution
+  transitions, lifecycle events, one-shot worker execution, and bounded local
+  worker-loop supervision
 
 quant_research_agent.promotion_authorization
   two-person family-promotion recommendation, decision, frozen evidence,

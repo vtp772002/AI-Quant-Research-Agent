@@ -310,8 +310,10 @@ uses a write transaction so concurrent workers cannot lease the same active
 job. Expired leases are recoverable until the attempt budget is exhausted;
 final expired attempts and repeated execution failures move to dead letter.
 Lifecycle events use a monotonic SQLite sequence. Public CLI/API payloads redact
-lease tokens. Execution is at-least-once and process supervision remains
-external to the repository.
+lease tokens. Execution is at-least-once. A managed local worker loop can poll
+the queue repeatedly, stop after an idle cycle, a maximum job count, a maximum
+runtime, or SIGINT/SIGTERM, and return a machine-readable session summary with
+stop reason, processed count, idle cycles, and outcome counts.
 
 Registry export writes newline-delimited JSON records, an export manifest, a
 reviewable Postgres upsert handoff SQL file, a governance manifest, and a
@@ -440,5 +442,5 @@ risk status. It does not compute forward returns or claim execution feasibility.
   immutable object storage, credentialed managed registry deployment,
   enterprise identity, tenant-scoped SaaS authorization, managed immutable
   promotion-ledger storage, managed HMAC key rotation, distributed provider
-  quota orchestration, managed worker supervision, distributed queue
-  deployment, or a full production execution simulator.
+  quota orchestration, distributed queue deployment, lease-renewal heartbeat
+  services, or a full production execution simulator.

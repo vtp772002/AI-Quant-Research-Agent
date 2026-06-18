@@ -226,7 +226,7 @@ def claim_research_job(
             WHERE status = 'running'
               AND lease_expires_at <= ?
               AND attempts >= max_attempts
-            ORDER BY created_at, job_id
+            ORDER BY created_at, rowid
             """,
             (timestamp,),
         ).fetchall()
@@ -280,7 +280,7 @@ def claim_research_job(
                     OR (status = 'retryable' AND available_at <= ?)
                     OR (status = 'running' AND lease_expires_at <= ?)
                 )
-            ORDER BY created_at, job_id
+            ORDER BY created_at, rowid
             LIMIT 1
             """,
             (timestamp, timestamp, timestamp),

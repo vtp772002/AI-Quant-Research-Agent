@@ -29,6 +29,7 @@ implemented until tests or validation evidence exist.
 | US-031 | Provider-specific LLM evals and cost controls | yes | yes | yes | yes | implemented | `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest tests/test_research_agents.py -q`; `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q`; `python -m compileall src tests`; `.venv/bin/python -m pip check`; fixture-provider CLI smoke with request/cost controls and eval artifacts |
 | US-032 | Two-person family promotion authorization | yes | yes | yes | yes | implemented | Focused promotion/platform tests passed 24/24; full pytest passed 161/161; compileall, `.venv` pip check, and `git diff --check` passed; CLI HMAC recommend/list/decide/verify smoke produced a valid 2-event ledger; API role/fingerprint/secret smoke passed |
 | US-033 | Durable research job queue and lease-based worker | yes | yes | yes | yes | implemented | Queue/platform verification 29/29; full pytest 175/175; queue suite 13/13; compileall, pip check, diff check, real CLI enqueue/list/worker/show smoke, and Harness story verify passed |
+| US-034 | Managed local research worker supervision | yes | yes | yes | yes | implemented | Worker queue suite 16/16; queue/platform verification 32/32; full pytest 178/178; compileall, pip check, diff check, real CLI enqueue/worker-loop smoke, daily script enqueue/worker smoke, Harness story verify, and decision verify passed |
 
 ## Evidence Rules
 

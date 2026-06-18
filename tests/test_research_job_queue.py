@@ -502,6 +502,120 @@ def test_worker_reports_lease_lost_without_overwriting_recovered_job(tmp_path: P
     assert stored.attempts == 2
 
 
+def test_worker_loop_processes_jobs_until_idle_and_returns_summary(tmp_path: Path):
+    from quant_research_agent.operations import BatchRunResult
+    from quant_research_agent.research_job_queue import (
+        enqueue_research_job,
+        get_research_job,
+    )
+    from quant_research_agent.research_job_worker import run_research_worker_loop
+
+    queue_path = tmp_path / "research_jobs.sqlite"
+    jobs = [
+        enqueue_research_job(
+            queue_path,
+            config_paths=[Path(f"configs/loop-{index}.yaml")],
+            output_dir=tmp_path / f"batch-{index}",
+            idempotency_key=f"loop-job-{index}",
+            now=NOW,
+        )
+        for index in range(2)
+    ]
+    calls: list[list[Path]] = []
+
+    def successful_executor(**kwargs):
+        calls.append(kwargs["config_paths"])
+        output_dir = kwargs["output_dir"]
+        return BatchRunResult(
+            status="completed",
+            runs=[],
+            failures=[],
+            summary_path=output_dir / "batch_summary.json",
+            comparison_markdown_path=None,
+            comparison_json_path=None,
+        )
+
+    summary = run_research_worker_loop(
+        queue_path,
+        worker_id="loop-worker",
+        stop_when_idle=True,
+        poll_seconds=0,
+        executor=successful_executor,
+        now=NOW,
+    )
+
+    assert summary.stop_reason == "idle"
+    assert summary.jobs_processed == 2
+    assert summary.outcome_counts == {"completed": 2}
+    assert summary.idle_cycles == 1
+    assert summary.worker_id == "loop-worker"
+    assert [call[0].name for call in calls] == ["loop-0.yaml", "loop-1.yaml"]
+    assert [get_research_job(queue_path, job.job_id).status for job in jobs] == [
+        "completed",
+        "completed",
+    ]
+
+
+def test_worker_loop_respects_max_jobs_and_runtime_budget(tmp_path: Path):
+    from quant_research_agent.operations import BatchRunResult
+    from quant_research_agent.research_job_queue import (
+        enqueue_research_job,
+        get_research_job,
+    )
+    from quant_research_agent.research_job_worker import run_research_worker_loop
+
+    queue_path = tmp_path / "research_jobs.sqlite"
+    jobs = []
+    for index in range(3):
+        jobs.append(
+            enqueue_research_job(
+                queue_path,
+                config_paths=[Path(f"configs/budget-{index}.yaml")],
+                output_dir=tmp_path / f"batch-{index}",
+                idempotency_key=f"budget-job-{index}",
+                now=NOW,
+            )
+        )
+
+    def successful_executor(**kwargs):
+        output_dir = kwargs["output_dir"]
+        return BatchRunResult(
+            status="completed",
+            runs=[],
+            failures=[],
+            summary_path=output_dir / "batch_summary.json",
+            comparison_markdown_path=None,
+            comparison_json_path=None,
+        )
+
+    max_jobs_summary = run_research_worker_loop(
+        queue_path,
+        worker_id="loop-worker",
+        max_jobs=2,
+        poll_seconds=0,
+        executor=successful_executor,
+        now=NOW,
+    )
+    runtime_summary = run_research_worker_loop(
+        queue_path,
+        worker_id="loop-worker",
+        max_runtime_seconds=0,
+        poll_seconds=0,
+        executor=successful_executor,
+        now=NOW,
+    )
+
+    assert max_jobs_summary.stop_reason == "max_jobs"
+    assert max_jobs_summary.jobs_processed == 2
+    assert runtime_summary.stop_reason == "max_runtime"
+    assert runtime_summary.jobs_processed == 0
+    assert [get_research_job(queue_path, job.job_id).status for job in jobs] == [
+        "completed",
+        "completed",
+        "queued",
+    ]
+
+
 def test_research_job_cli_enqueue_list_worker_and_show(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -562,6 +676,55 @@ def test_research_job_cli_enqueue_list_worker_and_show(
     assert worker["outcome"] == "completed"
     assert shown["status"] == "completed"
     assert Path(shown["result"]["summary_path"]).exists()
+
+
+def test_research_job_cli_worker_loop_returns_supervision_summary(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+):
+    from quant_research_agent.main import main
+
+    config_path = tmp_path / "cli-loop-worker.yaml"
+    config_path.write_text(_config_yaml(tmp_path), encoding="utf-8")
+    queue_path = tmp_path / "research_jobs.sqlite"
+    output_dir = tmp_path / "cli_loop_batch"
+
+    assert main(
+        [
+            "--enqueue-research-job",
+            str(config_path),
+            "--job-queue-path",
+            str(queue_path),
+            "--job-idempotency-key",
+            "cli-loop-worker-job",
+            "--job-output-dir",
+            str(output_dir),
+        ]
+    ) == 0
+    capsys.readouterr()
+
+    code = main(
+        [
+            "--research-worker-loop",
+            "--job-queue-path",
+            str(queue_path),
+            "--worker-id",
+            "cli-loop-worker",
+            "--worker-stop-when-idle",
+            "--worker-poll-seconds",
+            "0",
+            "--worker-retry-delay-seconds",
+            "0",
+        ]
+    )
+    payload = json.loads(capsys.readouterr().out)
+
+    assert code == 0
+    assert payload["worker_id"] == "cli-loop-worker"
+    assert payload["stop_reason"] == "idle"
+    assert payload["jobs_processed"] == 1
+    assert payload["outcome_counts"] == {"completed": 1}
+    assert payload["idle_cycles"] == 1
 
 
 def _config_yaml(tmp_path: Path) -> str:
