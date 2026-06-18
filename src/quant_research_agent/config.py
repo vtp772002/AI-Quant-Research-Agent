@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from math import isfinite
 from pathlib import Path
 from typing import Any
 
@@ -67,8 +68,22 @@ class WalkForwardConfig:
 
 
 @dataclass(frozen=True)
+class ResearchValidityConfig:
+    enabled: bool = False
+    holdout_fraction: float = 0.15
+    fdr_alpha: float = 0.10
+    min_holdout_sharpe: float = 0.0
+    min_holdout_ic: float = 0.0
+    require_positive_return: bool = True
+    require_baseline_outperformance: bool = True
+    require_walk_forward_stability: bool = True
+    require_data_readiness: bool = True
+
+
+@dataclass(frozen=True)
 class ValidationConfig:
     walk_forward: WalkForwardConfig
+    research_validity: ResearchValidityConfig
 
 
 @dataclass(frozen=True)
@@ -153,6 +168,7 @@ def parse_config(raw: dict[str, Any], base_dir: str | Path | None = None) -> App
     backtest = experiment["backtest"]
     validation = experiment.get("validation", {})
     walk_forward = validation.get("walk_forward", {}) or {}
+    research_validity = validation.get("research_validity", {}) or {}
     stress_tests = experiment.get("stress_tests", {}) or {}
     shorting = experiment.get("shorting", {}) or {}
     robustness = experiment.get("robustness", {}) or {}
@@ -193,6 +209,32 @@ def parse_config(raw: dict[str, Any], base_dir: str | Path | None = None) -> App
     walk_forward_min_train_fraction = float(walk_forward.get("min_train_fraction", 0.4))
     if not 0.1 <= walk_forward_min_train_fraction <= 0.9:
         raise ValueError("experiment.validation.walk_forward.min_train_fraction must be between 0.1 and 0.9")
+
+    research_validity_enabled = bool(research_validity.get("enabled", False))
+    holdout_fraction = float(research_validity.get("holdout_fraction", 0.15))
+    if not 0.05 <= holdout_fraction <= 0.40:
+        raise ValueError(
+            "experiment.validation.research_validity.holdout_fraction must be between 0.05 and 0.40"
+        )
+
+    fdr_alpha = float(research_validity.get("fdr_alpha", 0.10))
+    if not 0.0 < fdr_alpha <= 0.25:
+        raise ValueError(
+            "experiment.validation.research_validity.fdr_alpha must be greater than 0 and at most 0.25"
+        )
+
+    min_holdout_sharpe = float(research_validity.get("min_holdout_sharpe", 0.0))
+    if not isfinite(min_holdout_sharpe):
+        raise ValueError("experiment.validation.research_validity.min_holdout_sharpe must be finite")
+
+    min_holdout_ic = float(research_validity.get("min_holdout_ic", 0.0))
+    if not isfinite(min_holdout_ic):
+        raise ValueError("experiment.validation.research_validity.min_holdout_ic must be finite")
+
+    if research_validity_enabled and train_fraction + holdout_fraction > 0.90:
+        raise ValueError(
+            "experiment.train_fraction plus research_validity.holdout_fraction must be at most 0.90"
+        )
 
     neutralization_group_by = str(neutralization.get("group_by", "sector"))
     if neutralization_group_by != "sector":
@@ -317,7 +359,22 @@ def parse_config(raw: dict[str, Any], base_dir: str | Path | None = None) -> App
                 walk_forward=WalkForwardConfig(
                     window_count=walk_forward_window_count,
                     min_train_fraction=walk_forward_min_train_fraction,
-                )
+                ),
+                research_validity=ResearchValidityConfig(
+                    enabled=research_validity_enabled,
+                    holdout_fraction=holdout_fraction,
+                    fdr_alpha=fdr_alpha,
+                    min_holdout_sharpe=min_holdout_sharpe,
+                    min_holdout_ic=min_holdout_ic,
+                    require_positive_return=bool(research_validity.get("require_positive_return", True)),
+                    require_baseline_outperformance=bool(
+                        research_validity.get("require_baseline_outperformance", True)
+                    ),
+                    require_walk_forward_stability=bool(
+                        research_validity.get("require_walk_forward_stability", True)
+                    ),
+                    require_data_readiness=bool(research_validity.get("require_data_readiness", True)),
+                ),
             ),
             stress_tests=StressTestConfig(
                 neutralization=NeutralizationConfig(
