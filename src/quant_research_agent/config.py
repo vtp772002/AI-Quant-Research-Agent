@@ -128,8 +128,17 @@ class CapacityConfig:
 
 
 @dataclass(frozen=True)
+class ExperimentFamilyConfig:
+    family_id: str | None = None
+    hypothesis_id: str | None = None
+    candidate_id: str | None = None
+    selection_policy: str | None = None
+
+
+@dataclass(frozen=True)
 class ExperimentConfig:
     name: str
+    family: ExperimentFamilyConfig
     train_fraction: float
     signal: SignalConfig
     backtest: BacktestConfig
@@ -155,6 +164,16 @@ class AppConfig:
     report: ReportConfig
 
 
+ALLOWED_SELECTION_POLICIES = frozenset(
+    {
+        "pre_registered",
+        "exploratory",
+        "generated",
+        "manual_selection",
+    }
+)
+
+
 def load_config(path: str | Path) -> AppConfig:
     config_path = Path(path)
     raw = yaml.safe_load(config_path.read_text()) or {}
@@ -164,6 +183,7 @@ def load_config(path: str | Path) -> AppConfig:
 def parse_config(raw: dict[str, Any], base_dir: str | Path | None = None) -> AppConfig:
     data = raw["data"]
     experiment = raw["experiment"]
+    family = experiment.get("family", {}) or {}
     signal = experiment["signal"]
     backtest = experiment["backtest"]
     validation = experiment.get("validation", {})
@@ -364,6 +384,12 @@ def parse_config(raw: dict[str, Any], base_dir: str | Path | None = None) -> App
         ),
         experiment=ExperimentConfig(
             name=str(experiment["name"]),
+            family=ExperimentFamilyConfig(
+                family_id=_parse_optional_family_string(family.get("family_id"), "family_id"),
+                hypothesis_id=_parse_optional_family_string(family.get("hypothesis_id"), "hypothesis_id"),
+                candidate_id=_parse_optional_family_string(family.get("candidate_id"), "candidate_id"),
+                selection_policy=_parse_selection_policy(family.get("selection_policy")),
+            ),
             train_fraction=train_fraction,
             signal=SignalConfig(
                 positive_factors=[str(name) for name in signal.get("positive_factors", [])],
@@ -455,6 +481,25 @@ def _parse_research_validity_float(value: object, field_name: str) -> float:
             "must be a number, not a boolean"
         )
     return float(value)
+
+
+def _parse_optional_family_string(value: object, field_name: str) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        raise ValueError(f"experiment.family.{field_name} must not be blank when supplied")
+    return text
+
+
+def _parse_selection_policy(value: object) -> str | None:
+    policy = _parse_optional_family_string(value, "selection_policy")
+    if policy is None:
+        return None
+    if policy not in ALLOWED_SELECTION_POLICIES:
+        allowed = ", ".join(sorted(ALLOWED_SELECTION_POLICIES))
+        raise ValueError(f"experiment.family.selection_policy must be one of {allowed}")
+    return policy
 
 
 def _resolve_optional_path(value: object, base_path: Path) -> Path | None:

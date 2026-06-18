@@ -87,6 +87,59 @@ def test_parse_config_defaults_research_validity_for_compatibility():
     assert validity.require_data_readiness is True
 
 
+def test_parse_config_defaults_experiment_family_for_compatibility():
+    family = parse_config(_raw_config()).experiment.family
+
+    assert family.family_id is None
+    assert family.hypothesis_id is None
+    assert family.candidate_id is None
+    assert family.selection_policy is None
+
+
+def test_parse_config_supports_experiment_family_metadata():
+    raw = _raw_config()
+    raw["experiment"]["family"] = {
+        "family_id": "momentum-low-vol-v1",
+        "hypothesis_id": "momentum-low-risk",
+        "candidate_id": "base",
+        "selection_policy": "pre_registered",
+    }
+
+    family = parse_config(raw).experiment.family
+
+    assert family.family_id == "momentum-low-vol-v1"
+    assert family.hypothesis_id == "momentum-low-risk"
+    assert family.candidate_id == "base"
+    assert family.selection_policy == "pre_registered"
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["family_id", "hypothesis_id", "candidate_id", "selection_policy"],
+)
+def test_parse_config_rejects_blank_experiment_family_values(field: str):
+    raw = _raw_config()
+    raw["experiment"]["family"] = {field: "   "}
+
+    with pytest.raises(ValueError) as exc_info:
+        parse_config(raw)
+
+    assert str(exc_info.value) == f"experiment.family.{field} must not be blank when supplied"
+
+
+def test_parse_config_rejects_invalid_experiment_family_selection_policy():
+    raw = _raw_config()
+    raw["experiment"]["family"] = {"selection_policy": "winner_after_search"}
+
+    with pytest.raises(ValueError) as exc_info:
+        parse_config(raw)
+
+    assert str(exc_info.value) == (
+        "experiment.family.selection_policy must be one of "
+        "exploratory, generated, manual_selection, pre_registered"
+    )
+
+
 @pytest.mark.parametrize(
     "field",
     [
