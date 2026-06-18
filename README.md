@@ -189,6 +189,9 @@ Golden snapshot demo:
 python -m quant_research_agent.main --config configs/institutional_snapshot_demo.yaml
 ```
 
+The institutional snapshot demo also enables a locked holdout manifest:
+`data/golden/institutional_locked_holdout_manifest.yaml`.
+
 ## Metrics
 
 The research report includes:
@@ -205,6 +208,9 @@ The research report includes:
   holdout Sharpe, holdout IC, holdout return, baseline comparison,
   walk-forward stability, data readiness, and Benjamini-Hochberg FDR-adjusted
   holdout IC significance.
+- Locked institutional holdout evidence when configured, including manifest
+  schema, owner, purpose, source content hash, realized holdout date range,
+  symbol set, and row-count validation.
 - Cross-run experiment-family comparison verdict (`FAMILY_PROMOTE`,
   `FAMILY_REVIEW`, or `FAMILY_REJECT`) based on pre-registration, provenance
   comparability, run-level validity, and family-level Benjamini-Hochberg
@@ -264,6 +270,8 @@ The research report includes:
   the internal API role boundary.
 - Validity verdict and holdout/FDR evidence in reports, CLI JSON,
   reproducibility manifests, registry metrics, and experiment CSV rows.
+- Optional locked holdout manifests that fail closed on hash, date range,
+  symbol, or row-count mismatch before promotion evidence is accepted.
 - Experiment-family metadata in configs, manifests, and registry rows, plus
   CLI family comparison artifacts.
 
@@ -288,11 +296,12 @@ python -m quant_research_agent.api
   agent contracts, an opt-in live LLM adapter, an internal API, as-of signal
   generation, broker-free execution simulation, human review gating, review
   queue API endpoints for generated ideas, an advisory research-validity gate
-  with within-run FDR correction, cross-run experiment-family controls, and
-  immutable registry governance export packs, but no live vendor API integration,
+  with within-run FDR correction, cross-run experiment-family controls, locked
+  institutional holdout manifests, and immutable registry governance export
+  packs, but no live vendor API integration,
   broker-grade locate entitlement feed, paper/live broker execution, order
-  management, compliance workflow, separately locked holdout dataset, managed
-  Postgres/object-lock registry deployment, or multi-user family authorization.
+  management, compliance workflow, managed Postgres/object-lock registry
+  deployment, or multi-user family authorization.
 
 ## Production Readiness Path
 
@@ -321,6 +330,8 @@ Implemented Level 1 foundations:
   Benjamini-Hochberg FDR correction, named checks, and artifact evidence.
 - Cross-run experiment-family controls with pre-registration metadata,
   family-level FDR correction, registry fields, and Markdown/JSON artifacts.
+- Locked institutional holdout manifests with fail-closed local validation and
+  report/manifest/registry evidence.
 
 Deferred until separate stories:
 
@@ -330,7 +341,7 @@ Deferred until separate stories:
 - Multi-user SaaS controls beyond API-key roles.
 - Live commercial data vendor API integration with credentials and rate-limit handling.
 - Paper trading, broker integration, hard risk gates, reconciliation, and kill switch controls.
-- Separately locked institutional holdout datasets.
+- Managed holdout storage and access-control enforcement beyond local manifests.
 
 ## Next Steps
 

@@ -1,0 +1,10 @@
+schema_version: locked_holdout_v1
+dataset_id: institutional-golden-holdout-v1
+owner: research-ops
+purpose: final_promotion_holdout
+content_sha256: 325139aca2c798e1c6d66e7c9d834d6f548e162ed7625961badd87812a795bc1
+start: '2022-07-20'
+end: '2022-12-30'
+symbols: [AAA, BBB, CCC, DDD, EEE, FFF, GGG, HHH]
+row_count: 944
+minimum_row_count: 900

@@ -593,11 +593,32 @@ def _research_validity_section(result: ResearchRunResult) -> str:
             f"Holdout starts: `{validity.holdout_start or 'not configured'}`",
             f"FDR alpha: {validity.fdr_alpha:.2f}",
             "",
+            _locked_holdout_section(result),
+            "",
             "\n".join(candidate_rows),
             "",
             "\n".join(check_rows),
             "",
             reasons,
+        ]
+    )
+
+
+def _locked_holdout_section(result: ResearchRunResult) -> str:
+    evidence = result.locked_holdout
+    if evidence is None:
+        return "Locked holdout: `not configured`"
+    return "\n".join(
+        [
+            "Locked holdout: `verified`",
+            f"- Dataset ID: `{evidence.dataset_id or 'unknown'}`",
+            f"- Owner: `{evidence.owner or 'unknown'}`",
+            f"- Purpose: `{evidence.purpose or 'unknown'}`",
+            f"- Manifest: `{evidence.manifest_path}`",
+            f"- Holdout range: `{evidence.holdout_start}` to `{evidence.holdout_end}`",
+            f"- Row count: {evidence.row_count}",
+            f"- Symbols: {', '.join(evidence.symbols)}",
+            f"- Content hash matched: {_yes_no(bool(evidence.hash_matches)) if evidence.hash_matches is not None else 'not_required'}",
         ]
     )
 

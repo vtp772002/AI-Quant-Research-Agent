@@ -33,6 +33,9 @@ quant_research_agent.agents
 quant_research_agent.workflow
   CLI/API orchestration boundary
 
+quant_research_agent.locked_holdout
+  fail-closed local locked-holdout manifest validation for promotion evidence
+
 quant_research_agent.api_auth
   API key parsing, role hierarchy, FastAPI authorization dependencies, and sanitized request auth context
 

@@ -9,6 +9,7 @@ from quant_research_agent.agents.report_agent import ReportAgent, write_experime
 from quant_research_agent.agents.research_validity import research_validity_to_dict
 from quant_research_agent.config import AppConfig, load_config
 from quant_research_agent.experiment_registry import ExperimentRunRecord, record_run, record_to_dict
+from quant_research_agent.locked_holdout import locked_holdout_to_dict
 from quant_research_agent.reproducibility import (
     append_reproducibility_section,
     create_run_context,
@@ -74,6 +75,8 @@ def workflow_payload(
     manifest: dict[str, Any],
     registry_record: ExperimentRunRecord,
 ) -> dict[str, Any]:
+    research_validity = research_validity_to_dict(result.research_validity)
+    research_validity["locked_holdout"] = locked_holdout_to_dict(result.locked_holdout)
     return {
         "run": _run_payload(manifest),
         "registry": {
@@ -108,7 +111,8 @@ def workflow_payload(
         "factor_diagnostics": _factor_diagnostics_payload(result),
         "robustness": _robustness_payload(result),
         "capacity": _capacity_payload(result),
-        "research_validity": research_validity_to_dict(result.research_validity),
+        "research_validity": research_validity,
+        "locked_holdout": locked_holdout_to_dict(result.locked_holdout),
     }
 
 

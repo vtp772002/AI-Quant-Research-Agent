@@ -70,38 +70,39 @@ ledger.
    total return.
 16. Evaluate the advisory Research Validity Gate over holdout, FDR, economic,
     baseline, stability, and data-readiness checks.
-17. Write a Markdown research report, append experiment metrics, and emit a
+17. Validate a locked institutional holdout manifest when configured.
+18. Write a Markdown research report, append experiment metrics, and emit a
     reproducibility pack manifest for the run.
-18. Persist key run metadata and metrics into a queryable local SQLite
+19. Persist key run metadata and metrics into a queryable local SQLite
     experiment registry.
-19. Generate as-of signal snapshots for a requested date using only data
+20. Generate as-of signal snapshots for a requested date using only data
     available on or before that date.
-20. Compare reproducibility manifests across prior runs and rank them by a
+21. Compare reproducibility manifests across prior runs and rank them by a
     selected test-period metric.
-21. Compare experiment families across prior runs and apply family-level FDR
+22. Compare experiment families across prior runs and apply family-level FDR
     correction before treating a candidate as promotion-ready.
-22. Run scheduled-style research batches over one or more configs and publish
+23. Run scheduled-style research batches over one or more configs and publish
     batch summaries plus comparison artifacts.
-23. Export the local registry as offline object-store/Postgres handoff artifacts.
-24. Export and verify immutable registry governance packs with artifact hashes,
+24. Export the local registry as offline object-store/Postgres handoff artifacts.
+25. Export and verify immutable registry governance packs with artifact hashes,
     retention metadata, family evidence, and a hash chain.
-25. Load vendor snapshot drops through the validated OHLCV snapshot boundary.
-26. Extract draft alpha experiment templates from paper or blog text.
-27. Simulate as-of execution plans without routing orders or contacting brokers.
-28. Generate validated research idea configs from prior run memory, critique
+26. Load vendor snapshot drops through the validated OHLCV snapshot boundary.
+27. Extract draft alpha experiment templates from paper or blog text.
+28. Simulate as-of execution plans without routing orders or contacting brokers.
+29. Generate validated research idea configs from prior run memory, critique
     existing runs, and orchestrate iterative alpha-mining batches.
-29. Run idea generation through a governed provider boundary with deterministic,
+30. Run idea generation through a governed provider boundary with deterministic,
     fixture, or explicitly allowed command providers and transcript artifacts.
-30. Gate generated idea execution behind a human review queue with draft,
+31. Gate generated idea execution behind a human review queue with draft,
     approved, rejected, ran, and archived statuses.
-31. Persist an append-only review audit ledger for generated idea creation,
+32. Persist an append-only review audit ledger for generated idea creation,
     status changes, and run marking.
-32. Protect non-health internal API routes with API keys and role-scoped access.
-33. Emit API request logs with sanitized authenticated actor and authorization
+33. Protect non-health internal API routes with API keys and role-scoped access.
+34. Emit API request logs with sanitized authenticated actor and authorization
     result context.
-34. Expose review queue summary, audit, status-update, and run-approved
+35. Expose review queue summary, audit, status-update, and run-approved
     operations through the role-scoped internal API.
-35. Generate research ideas through an opt-in live OpenAI provider while
+36. Generate research ideas through an opt-in live OpenAI provider while
     preserving credential guards, transcripts, validation, and review gating.
 
 ## Data Contract
@@ -135,7 +136,9 @@ The golden snapshot demo configuration is
 `data/golden/institutional_ohlcv_snapshot.yaml`, and reports snapshot
 provenance fields including dataset id, vendor, as-of date, SHA-256 validation,
 row-count validation, symbol-set validation, date-range validation, and
-institutional data flags.
+institutional data flags. It also verifies
+`data/golden/institutional_locked_holdout_manifest.yaml` as the locked
+promotion holdout boundary.
 
 Data integrity diagnostics report requested versus observed symbols, row and
 date counts, per-symbol coverage, duplicate index rows, non-positive prices or
@@ -173,6 +176,15 @@ through the existing `test` compatibility alias, but holdout-period metrics
 drive promotion evidence. The holdout boundary is also enforced in validation
 diagnostics so forward-return observations whose realization date crosses into
 holdout are excluded from validation evidence.
+
+Locked holdout manifests can require local, fail-closed verification of the
+realized holdout slice. The manifest schema records dataset id, owner, purpose,
+source content SHA-256, expected start/end, symbols, row count, and minimum row
+count. When `locked_holdout.enabled` is true, a hash, date-range, symbol, or row
+count mismatch stops the run before promotion evidence is accepted. Locked
+holdout evidence is written to CLI JSON, the Markdown report, reproducibility
+manifest `metrics.research_validity.locked_holdout`, and therefore registry
+metrics JSON.
 
 The validity gate evaluates a within-run candidate family containing the agent
 signal, configured baselines, enabled stress tests, parameter-sensitivity
@@ -362,11 +374,11 @@ risk status. It does not compute forward returns or claim execution feasibility.
   run critique, research memory, iterative alpha mining, an internal API, as-of
   signal snapshots, broker-free execution simulation, an advisory
   research-validity gate with within-run Benjamini-Hochberg FDR correction,
-  cross-run experiment-family controls, and immutable registry governance export
-  packs, but
+  cross-run experiment-family controls, locked institutional holdout manifests,
+  and immutable registry governance export packs, but
   these remain research approximations and do not replace broker execution
   data, direct securities-lending feeds, direct vendor market data APIs, venue
-  routing analysis, independent alpha review, separately locked institutional
-  holdout datasets, immutable object storage, managed registry deployment,
+  routing analysis, independent alpha review, managed holdout storage,
+  immutable object storage, managed registry deployment,
   multi-user SaaS authorization, provider-specific LLM evals and
   rate-limit orchestration, or a full production execution simulator.

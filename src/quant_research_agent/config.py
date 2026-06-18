@@ -68,6 +68,13 @@ class WalkForwardConfig:
 
 
 @dataclass(frozen=True)
+class LockedHoldoutConfig:
+    enabled: bool = False
+    manifest_path: Path | None = None
+    require_manifest_hash: bool = True
+
+
+@dataclass(frozen=True)
 class ResearchValidityConfig:
     enabled: bool = False
     holdout_fraction: float = 0.15
@@ -78,6 +85,7 @@ class ResearchValidityConfig:
     require_baseline_outperformance: bool = True
     require_walk_forward_stability: bool = True
     require_data_readiness: bool = True
+    locked_holdout: LockedHoldoutConfig = field(default_factory=LockedHoldoutConfig)
 
 
 @dataclass(frozen=True)
@@ -189,6 +197,7 @@ def parse_config(raw: dict[str, Any], base_dir: str | Path | None = None) -> App
     validation = experiment.get("validation", {})
     walk_forward = validation.get("walk_forward", {}) or {}
     research_validity = validation.get("research_validity", {}) or {}
+    locked_holdout = research_validity.get("locked_holdout", {}) or {}
     stress_tests = experiment.get("stress_tests", {}) or {}
     shorting = experiment.get("shorting", {}) or {}
     robustness = experiment.get("robustness", {}) or {}
@@ -287,6 +296,23 @@ def parse_config(raw: dict[str, Any], base_dir: str | Path | None = None) -> App
         research_validity.get("require_data_readiness", True),
         "require_data_readiness",
     )
+    locked_holdout_enabled = _parse_locked_holdout_bool(
+        locked_holdout.get("enabled", False),
+        "enabled",
+    )
+    locked_holdout_manifest_path = _resolve_optional_path(locked_holdout.get("manifest_path"), base_path)
+    locked_holdout_require_manifest_hash = _parse_locked_holdout_bool(
+        locked_holdout.get("require_manifest_hash", True),
+        "require_manifest_hash",
+    )
+    if locked_holdout_enabled and not research_validity_enabled:
+        raise ValueError(
+            "experiment.validation.research_validity.locked_holdout.enabled requires research_validity.enabled"
+        )
+    if locked_holdout_enabled and locked_holdout_manifest_path is None:
+        raise ValueError(
+            "experiment.validation.research_validity.locked_holdout.manifest_path is required when enabled"
+        )
 
     neutralization_group_by = str(neutralization.get("group_by", "sector"))
     if neutralization_group_by != "sector":
@@ -428,6 +454,11 @@ def parse_config(raw: dict[str, Any], base_dir: str | Path | None = None) -> App
                     require_baseline_outperformance=require_baseline_outperformance,
                     require_walk_forward_stability=require_walk_forward_stability,
                     require_data_readiness=require_data_readiness,
+                    locked_holdout=LockedHoldoutConfig(
+                        enabled=locked_holdout_enabled,
+                        manifest_path=locked_holdout_manifest_path,
+                        require_manifest_hash=locked_holdout_require_manifest_hash,
+                    ),
                 ),
             ),
             stress_tests=StressTestConfig(
@@ -470,6 +501,15 @@ def _parse_research_validity_bool(value: object, field_name: str) -> bool:
     if type(value) is not bool:
         raise ValueError(
             f"experiment.validation.research_validity.{field_name} must be a boolean"
+        )
+    return value
+
+
+def _parse_locked_holdout_bool(value: object, field_name: str) -> bool:
+    if type(value) is not bool:
+        raise ValueError(
+            "experiment.validation.research_validity.locked_holdout."
+            f"{field_name} must be a boolean"
         )
     return value
 

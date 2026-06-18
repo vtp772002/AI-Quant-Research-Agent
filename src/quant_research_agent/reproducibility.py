@@ -13,6 +13,7 @@ from quant_research_agent.agents.evaluator_agent import ResearchRunResult
 from quant_research_agent.agents.research_validity import research_validity_to_dict
 from quant_research_agent.config import AppConfig
 from quant_research_agent.data.snapshot import file_sha256
+from quant_research_agent.locked_holdout import locked_holdout_to_dict
 
 
 @dataclass(frozen=True)
@@ -78,6 +79,7 @@ def write_reproducibility_pack(
     copy2(context.config_path, context.copied_config_path)
 
     research_validity = research_validity_to_dict(result.research_validity)
+    research_validity["locked_holdout"] = locked_holdout_to_dict(result.locked_holdout)
     manifest = {
         "run_id": context.run_id,
         "generated_at": context.generated_at,

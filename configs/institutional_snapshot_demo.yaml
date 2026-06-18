@@ -57,6 +57,10 @@ experiment:
       require_baseline_outperformance: true
       require_walk_forward_stability: true
       require_data_readiness: true
+      locked_holdout:
+        enabled: true
+        manifest_path: ../data/golden/institutional_locked_holdout_manifest.yaml
+        require_manifest_hash: true
   stress_tests:
     neutralization:
       enabled: true

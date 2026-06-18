@@ -28,6 +28,7 @@ from quant_research_agent.factors.diagnostics import (
     selected_factor_names,
 )
 from quant_research_agent.factors.registry import compute_factor_library
+from quant_research_agent.locked_holdout import LockedHoldoutEvidence, validate_locked_holdout
 
 
 @dataclass(frozen=True)
@@ -46,6 +47,7 @@ class ResearchRunResult:
     robustness: RobustnessDiagnostics
     capacity: CapacityDiagnostics
     research_validity: ResearchValidityResult
+    locked_holdout: LockedHoldoutEvidence | None
 
 
 def run_research_workflow(config: AppConfig) -> ResearchRunResult:
@@ -115,6 +117,11 @@ def run_research_workflow(config: AppConfig) -> ResearchRunResult:
         walk_forward_windows=config.experiment.validation.walk_forward.window_count,
         walk_forward_min_train_fraction=config.experiment.validation.walk_forward.min_train_fraction,
     )
+    locked_holdout = validate_locked_holdout(
+        config=config,
+        market_data=market_data,
+        backtest=backtest,
+    )
     baselines = BaselineAgent().evaluate_baselines(
         market_data=market_data,
         factors=factors,
@@ -177,4 +184,5 @@ def run_research_workflow(config: AppConfig) -> ResearchRunResult:
         robustness=robustness,
         capacity=capacity,
         research_validity=research_validity,
+        locked_holdout=locked_holdout,
     )
