@@ -250,7 +250,7 @@ Reasons preventing promotion:
 
 ## Interpretation
 
-The research validity gate rejects promotion. The signal shows positive validation rank correlation but weak portfolio conversion. Investigate turnover, concentration, and whether the long/short cutoffs are too aggressive.
+The run-level research validity gate rejects promotion. The signal shows positive validation rank correlation but weak portfolio conversion. Investigate turnover, concentration, and whether the long/short cutoffs are too aggressive.
 
 The strongest out-of-sample Sharpe is from `reversal_5d_only`, not the agent signal. Treat this as a useful rejection/iteration signal: inspect which factor exposure is carrying the result before adding model complexity.
 
@@ -282,11 +282,11 @@ The train/validation/holdout split is chronological. Validation-period results r
 
 ## Run Reproducibility
 
-- Run ID: `momentum-low-volatility-demo-20260618T041252Z-925eea26bb-1280d02c`
-- Generated at: `2026-06-18T04:12:52Z`
-- Config SHA-256: `925eea26bb86bbd03cd19917f95acd8c9c1e1871bf70aa912fc14c4518e93db4`
-- Git commit: `b6fdb3335b192e2346cc796fdca128c8e83668f3`
-- Git branch: `codex/us-026-research-validity`
-- Git dirty: yes
-- Manifest: `results/runs/momentum-low-volatility-demo-20260618T041252Z-925eea26bb-1280d02c/manifest.json`
-- Frozen config: `results/runs/momentum-low-volatility-demo-20260618T041252Z-925eea26bb-1280d02c/config.yaml`
+- Run ID: `momentum-low-volatility-demo-20260618T045501Z-67e8b327e8-120121be`
+- Generated at: `2026-06-18T04:55:01Z`
+- Config SHA-256: `67e8b327e804ecc0100f93a505a1b5b2a1af10af5d8fccf30a682b486b1bee1f`
+- Git commit: `e546d07235344a44eb2eafaaa3757636b8cb1dc6`
+- Git branch: `codex/us-027-cross-run-family-controls`
+- Git dirty: no
+- Manifest: `results/runs/momentum-low-volatility-demo-20260618T045501Z-67e8b327e8-120121be/manifest.json`
+- Frozen config: `results/runs/momentum-low-volatility-demo-20260618T045501Z-67e8b327e8-120121be/config.yaml`
