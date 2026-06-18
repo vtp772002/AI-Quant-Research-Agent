@@ -34,6 +34,7 @@ from quant_research_agent.registry_export import (
     registry_governance_verification_to_dict,
     verify_registry_governance_pack,
 )
+from quant_research_agent.llm_provider import ProviderControlPolicy
 from quant_research_agent.research_agents import (
     critique_run_manifest,
     critique_to_dict,
@@ -139,7 +140,19 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--llm-model", help="Live LLM model name, or AIQRA_OPENAI_MODEL for --llm-provider openai.")
     parser.add_argument("--llm-api-url", help="Override live LLM API URL, or AIQRA_OPENAI_RESPONSES_URL.")
     parser.add_argument("--llm-timeout", type=float, default=60.0, help="Live LLM request timeout in seconds.")
+    parser.add_argument("--llm-max-requests", type=int, help="Maximum provider requests allowed for this CLI operation.")
+    parser.add_argument("--llm-max-estimated-cost-usd", type=float, help="Maximum estimated provider cost allowed for this CLI operation.")
+    parser.add_argument("--llm-input-cost-per-1k", type=float, default=0.0, help="Estimated input-token cost per 1k tokens in USD.")
+    parser.add_argument("--llm-output-cost-per-1k", type=float, default=0.0, help="Estimated output-token cost per 1k tokens in USD.")
+    parser.add_argument("--llm-expected-output-tokens", type=int, help="Expected provider output tokens used for preflight cost estimates.")
     args = parser.parse_args(argv)
+    llm_control_policy = ProviderControlPolicy(
+        max_requests=args.llm_max_requests,
+        max_estimated_cost_usd=args.llm_max_estimated_cost_usd,
+        input_cost_per_1k_tokens_usd=args.llm_input_cost_per_1k,
+        output_cost_per_1k_tokens_usd=args.llm_output_cost_per_1k,
+        expected_output_tokens=args.llm_expected_output_tokens,
+    )
 
     if args.review_ideas:
         if not args.review_queue:
@@ -198,6 +211,7 @@ def main(argv: list[str] | None = None) -> int:
             model=args.llm_model,
             api_url=args.llm_api_url,
             timeout_seconds=args.llm_timeout,
+            control_policy=llm_control_policy,
         )
         print(
             json.dumps(
@@ -212,6 +226,8 @@ def main(argv: list[str] | None = None) -> int:
                         "prompt_path": str(provider_artifacts.prompt_path),
                         "response_path": str(provider_artifacts.response_path),
                         "transcript_path": str(provider_artifacts.transcript_path),
+                        "controls_path": str(provider_artifacts.controls_path),
+                        "eval_path": str(provider_artifacts.eval_path),
                     },
                 },
                 indent=2,
@@ -251,6 +267,7 @@ def main(argv: list[str] | None = None) -> int:
             model=args.llm_model,
             api_url=args.llm_api_url,
             timeout_seconds=args.llm_timeout,
+            control_policy=llm_control_policy,
         )
         print(json.dumps(mining_result_to_dict(result), indent=2, sort_keys=True))
         return 0

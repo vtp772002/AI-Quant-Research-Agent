@@ -335,7 +335,15 @@ processes. `openai` is an opt-in live provider that requires
 `AIQRA_OPENAI_API_KEY` or `OPENAI_API_KEY`, requires an explicit model, and
 writes only normalized response metadata to artifacts. Raw API keys are not
 written to prompt, response, transcript, idea, or review queue artifacts. The
-platform still rejects invalid provider output before any config is written.
+provider boundary also writes machine-readable controls and eval artifacts.
+Controls record planned request count, operator-supplied cost rates, estimated
+cost, configured limits, and rejection reasons; they fail closed before provider
+transport when request or estimated-cost limits are exceeded. Provider evals
+check requested idea count, schema fields, allowed factors, unique names,
+warnings, and confidence ranges before downstream config generation. Cost
+controls use configured estimates rather than claiming live vendor billing
+truth. The platform still rejects invalid provider output before any config is
+written.
 
 Generated idea configs are not execution-ready by default. Idea generation
 writes a `review_queue.json` artifact with one record per config. Records start

@@ -16,7 +16,11 @@ from quant_research_agent.idea_review import (
     review_summary,
     update_idea_status,
 )
-from quant_research_agent.llm_provider import build_research_prompt_payload, run_structured_provider
+from quant_research_agent.llm_provider import (
+    ProviderControlPolicy,
+    build_research_prompt_payload,
+    run_structured_provider,
+)
 from quant_research_agent.research_agents import (
     ExperimentIdea,
     LLMResearchAgent,
@@ -232,6 +236,15 @@ def test_fixture_provider_generates_validated_ideas_and_transcript(tmp_path: Pat
     assert artifacts.prompt_path.exists()
     assert artifacts.response_path.exists()
     assert artifacts.transcript_path.exists()
+    assert artifacts.controls_path.exists()
+    assert artifacts.eval_path.exists()
+    ideas_payload = json.loads(ideas_path.read_text(encoding="utf-8"))
+    assert ideas_payload["provider_artifacts"]["controls_path"] == str(artifacts.controls_path)
+    assert ideas_payload["provider_artifacts"]["eval_path"] == str(artifacts.eval_path)
+    controls = json.loads(artifacts.controls_path.read_text(encoding="utf-8"))
+    provider_eval = json.loads(artifacts.eval_path.read_text(encoding="utf-8"))
+    assert controls["status"] == "passed"
+    assert provider_eval["status"] == "passed"
 
 
 def test_command_provider_requires_explicit_external_allowance(tmp_path: Path):
@@ -271,6 +284,115 @@ def test_openai_provider_requires_explicit_external_allowance(monkeypatch, tmp_p
             transcript_dir=tmp_path / "transcripts",
             allow_external=False,
         )
+
+
+def test_provider_request_limit_rejects_before_openai_transport(monkeypatch, tmp_path: Path):
+    called = False
+
+    def fake_post_json(url, *, headers, payload, timeout_seconds):
+        nonlocal called
+        called = True
+        _ = (url, headers, payload, timeout_seconds)
+        return {}
+
+    monkeypatch.setenv("AIQRA_OPENAI_API_KEY", "sk-test-secret")
+    monkeypatch.setenv("AIQRA_OPENAI_MODEL", "test-model")
+    monkeypatch.setattr("quant_research_agent.llm_provider._post_json", fake_post_json)
+    prompt = build_research_prompt_payload(
+        objective="guard provider request count",
+        count=1,
+        factor_names=["momentum_20d"],
+        memory={"run_count": 0},
+        base_experiment={"name": "base"},
+    )
+
+    with pytest.raises(PermissionError, match="planned_requests=1 exceeds max_requests=0"):
+        run_structured_provider(
+            provider="openai",
+            prompt_payload=prompt,
+            transcript_dir=tmp_path / "transcripts",
+            allow_external=True,
+            control_policy=ProviderControlPolicy(max_requests=0),
+        )
+
+    assert called is False
+    controls_path = next((tmp_path / "transcripts").glob("*-openai-controls.json"))
+    controls = json.loads(controls_path.read_text(encoding="utf-8"))
+    assert controls["status"] == "rejected"
+
+
+def test_provider_cost_limit_rejects_before_fixture_read(tmp_path: Path):
+    prompt = build_research_prompt_payload(
+        objective="guard provider cost",
+        count=1,
+        factor_names=["momentum_20d"],
+        memory={"run_count": 0},
+        base_experiment={"name": "base"},
+    )
+
+    with pytest.raises(PermissionError, match="estimated_cost_usd"):
+        run_structured_provider(
+            provider="fixture",
+            prompt_payload=prompt,
+            transcript_dir=tmp_path / "transcripts",
+            fixture_path=tmp_path / "missing_fixture.json",
+            control_policy=ProviderControlPolicy(
+                max_estimated_cost_usd=0.0,
+                input_cost_per_1k_tokens_usd=0.01,
+                output_cost_per_1k_tokens_usd=0.01,
+            ),
+        )
+
+    controls_path = next((tmp_path / "transcripts").glob("*-fixture-controls.json"))
+    controls = json.loads(controls_path.read_text(encoding="utf-8"))
+    assert controls["status"] == "rejected"
+
+
+def test_provider_eval_rejects_unknown_factor_boundary(tmp_path: Path):
+    fixture_path = tmp_path / "fixture.json"
+    fixture_path.write_text(
+        json.dumps(
+            {
+                "ideas": [
+                    {
+                        "name": "bad_external_factor",
+                        "hypothesis": "Provider should not escape allowed factors.",
+                        "positive_factors": ["earnings_revision"],
+                        "negative_factors": [],
+                        "holding_period": 5,
+                        "quantile": 0.2,
+                        "rationale": "Invalid factor.",
+                        "confidence": 0.8,
+                        "warnings": ["review before running"],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    prompt = build_research_prompt_payload(
+        objective="guard provider eval",
+        count=1,
+        factor_names=["momentum_20d"],
+        memory={"run_count": 0},
+        base_experiment={"name": "base"},
+    )
+
+    with pytest.raises(ValueError, match="provider eval failed"):
+        run_structured_provider(
+            provider="fixture",
+            prompt_payload=prompt,
+            transcript_dir=tmp_path / "transcripts",
+            fixture_path=fixture_path,
+        )
+
+    eval_path = next((tmp_path / "transcripts").glob("*-fixture-eval.json"))
+    payload = json.loads(eval_path.read_text(encoding="utf-8"))
+    assert payload["status"] == "failed"
+    assert any(
+        check["name"] == "allowed_factor_boundary" and not check["passed"]
+        for check in payload["checks"]
+    )
 
 
 def test_openai_provider_uses_responses_payload_and_sanitized_artifacts(monkeypatch, tmp_path: Path):

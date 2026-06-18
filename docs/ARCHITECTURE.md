@@ -60,7 +60,9 @@ quant_research_agent.research_agents
   LLM-facing idea schema, strict validation, memory, critique, and alpha-mining orchestration
 
 quant_research_agent.llm_provider
-  prompt/schema versioning, provider guardrails, live OpenAI adapter, and prompt/response transcript artifacts
+  prompt/schema versioning, provider guardrails, live OpenAI adapter,
+  request/cost controls, provider eval artifacts, and prompt/response
+  transcript artifacts
 
 quant_research_agent.idea_review
   human review queue, append-only review audit ledger, idea approval state, and run gate enforcement

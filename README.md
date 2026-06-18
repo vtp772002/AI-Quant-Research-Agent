@@ -112,6 +112,7 @@ Generate validated research ideas from prior run memory:
 ```bash
 python -m quant_research_agent.main --generate-ideas --config configs/base.yaml --n 10 --ideas-output-dir results/ideas
 python -m quant_research_agent.main --generate-ideas --config configs/base.yaml --llm-provider fixture --llm-fixture fixtures/ideas.json --ideas-output-dir results/ideas
+python -m quant_research_agent.main --generate-ideas --config configs/base.yaml --llm-provider fixture --llm-fixture fixtures/ideas.json --llm-max-requests 1 --llm-max-estimated-cost-usd 0.05 --llm-input-cost-per-1k 0.001 --llm-output-cost-per-1k 0.002 --ideas-output-dir results/ideas
 AIQRA_OPENAI_API_KEY="..." AIQRA_OPENAI_MODEL="<model>" python -m quant_research_agent.main --generate-ideas --config configs/base.yaml --llm-provider openai --allow-external-llm --ideas-output-dir results/live_ideas
 python -m quant_research_agent.main --critique-run results/runs/<run_id>/manifest.json
 python -m quant_research_agent.main --mine-alpha --config configs/base.yaml --n 5 --mine-output-dir results/alpha_mining
@@ -128,7 +129,13 @@ The OpenAI provider reads credentials from `AIQRA_OPENAI_API_KEY` or
 `OPENAI_API_KEY`, requires an explicit model via `--llm-model` or
 `AIQRA_OPENAI_MODEL`, calls the Responses API, and never writes raw API keys to
 artifacts. Prompt, response, and transcript artifacts are written under the
-idea output directory for review. Generated ideas also write
+idea output directory for review. Request/cost controls and provider eval
+artifacts are written beside the transcript; use `--llm-max-requests`,
+`--llm-max-estimated-cost-usd`, `--llm-input-cost-per-1k`,
+`--llm-output-cost-per-1k`, and `--llm-expected-output-tokens` to fail closed
+before provider transport when an operation exceeds the configured budget.
+Token costs are operator-supplied estimates, not embedded vendor billing truth.
+Generated ideas also write
 `review_queue.json`; ideas start as `draft` and must be marked `approved` before
 `--run-approved-ideas` can execute them. One-shot
 `--mine-alpha --run-generated` is blocked by default because it creates a fresh

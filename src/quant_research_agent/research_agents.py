@@ -20,6 +20,7 @@ from quant_research_agent.idea_review import (
 from quant_research_agent.llm_provider import (
     PROMPT_SCHEMA_VERSION,
     ProviderArtifacts,
+    ProviderControlPolicy,
     build_research_prompt_payload,
     run_structured_provider,
 )
@@ -303,6 +304,7 @@ def generate_idea_configs_with_provider(
     model: str | None = None,
     api_url: str | None = None,
     timeout_seconds: float = 60.0,
+    control_policy: ProviderControlPolicy | None = None,
 ) -> tuple[list[ExperimentIdea], list[Path], Path, Path, ProviderArtifacts | None]:
     base_config = load_config(base_config_path)
     memory = load_research_memory(registry_path)
@@ -334,6 +336,7 @@ def generate_idea_configs_with_provider(
             model=model,
             api_url=api_url,
             timeout_seconds=timeout_seconds,
+            control_policy=control_policy,
         )
         ideas = [_idea_from_payload(item) for item in raw_ideas[:count]]
         for idea in ideas:
@@ -355,6 +358,8 @@ def generate_idea_configs_with_provider(
             "prompt_path": str(provider_artifacts.prompt_path),
             "response_path": str(provider_artifacts.response_path),
             "transcript_path": str(provider_artifacts.transcript_path),
+            "controls_path": str(provider_artifacts.controls_path),
+            "eval_path": str(provider_artifacts.eval_path),
             "prompt_version": provider_artifacts.prompt_version,
             "warnings": provider_artifacts.warnings,
         },
@@ -386,6 +391,7 @@ def mine_alpha(
     model: str | None = None,
     api_url: str | None = None,
     timeout_seconds: float = 60.0,
+    control_policy: ProviderControlPolicy | None = None,
 ) -> AlphaMiningResult:
     ideas, config_paths, ideas_path, review_queue_path, provider_artifacts = generate_idea_configs_with_provider(
         base_config_path=base_config_path,
@@ -401,6 +407,7 @@ def mine_alpha(
         model=model,
         api_url=api_url,
         timeout_seconds=timeout_seconds,
+        control_policy=control_policy,
     )
     batch_result = None
     if run_generated:
@@ -500,6 +507,8 @@ def mining_result_to_dict(result: AlphaMiningResult) -> dict[str, object]:
             "prompt_path": str(result.provider_artifacts.prompt_path),
             "response_path": str(result.provider_artifacts.response_path),
             "transcript_path": str(result.provider_artifacts.transcript_path),
+            "controls_path": str(result.provider_artifacts.controls_path),
+            "eval_path": str(result.provider_artifacts.eval_path),
             "warnings": result.provider_artifacts.warnings,
         },
     }
