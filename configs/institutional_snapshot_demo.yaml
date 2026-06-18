@@ -21,6 +21,11 @@ data:
 
 experiment:
   name: institutional_snapshot_momentum_low_volatility
+  family:
+    family_id: institutional-snapshot-momentum-low-volatility-v1
+    hypothesis_id: momentum-low-risk
+    candidate_id: base
+    selection_policy: pre_registered
   train_fraction: 0.7
   signal:
     positive_factors:

@@ -33,6 +33,11 @@ data:
 
 experiment:
   name: point_in_time_synthetic_momentum_low_volatility
+  family:
+    family_id: point-in-time-synthetic-momentum-low-volatility-v1
+    hypothesis_id: momentum-low-risk
+    candidate_id: base
+    selection_policy: pre_registered
   train_fraction: 0.7
   signal:
     positive_factors:

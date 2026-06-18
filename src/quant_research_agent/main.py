@@ -8,6 +8,11 @@ from quant_research_agent.execution_simulator import (
     execution_simulation_to_dict,
     run_execution_simulation,
 )
+from quant_research_agent.experiment_family import (
+    compare_experiment_family,
+    family_comparison_to_dict,
+    family_comparison_to_markdown,
+)
 from quant_research_agent.idea_review import (
     approved_config_paths,
     mark_configs_ran,
@@ -43,6 +48,12 @@ def main(argv: list[str] | None = None) -> int:
         "--compare-runs",
         help="Compare reproducibility manifests under a results/runs directory or a single manifest path.",
     )
+    parser.add_argument(
+        "--compare-family",
+        help="Compare cross-run experiment-family evidence under a results/runs directory or a single manifest path.",
+    )
+    parser.add_argument("--family-id", help="Optional experiment family id filter for --compare-family.")
+    parser.add_argument("--family-fdr-alpha", type=float, default=0.10, help="FDR alpha for --compare-family.")
     parser.add_argument(
         "--comparison-metric",
         default="sharpe",
@@ -266,6 +277,26 @@ def main(argv: list[str] | None = None) -> int:
             output_path.parent.mkdir(parents=True, exist_ok=True)
             output_path.write_text(rendered, encoding="utf-8")
             print(f"Comparison: {output_path}")
+        else:
+            print(rendered)
+        return 0
+
+    if args.compare_family:
+        comparison = compare_experiment_family(
+            Path(args.compare_family),
+            family_id=args.family_id,
+            fdr_alpha=args.family_fdr_alpha,
+            limit=args.limit,
+        )
+        if args.json:
+            rendered = json.dumps(family_comparison_to_dict(comparison), indent=2, sort_keys=True)
+        else:
+            rendered = family_comparison_to_markdown(comparison)
+        if args.output:
+            output_path = Path(args.output)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(rendered, encoding="utf-8")
+            print(f"Family comparison: {output_path}")
         else:
             print(rendered)
         return 0

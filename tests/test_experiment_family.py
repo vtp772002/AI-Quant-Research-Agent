@@ -10,6 +10,7 @@ from quant_research_agent.experiment_family import (
     family_comparison_to_dict,
     family_comparison_to_markdown,
 )
+from quant_research_agent.main import main
 
 
 def test_compare_experiment_family_promotes_preregistered_run_with_family_qvalue(tmp_path: Path):
@@ -175,6 +176,53 @@ def test_compare_experiment_family_rejects_invalid_alpha(tmp_path: Path):
 
     with pytest.raises(ValueError, match="family_fdr_alpha must be greater than 0 and at most 0.25"):
         compare_experiment_family(tmp_path / "manifest.json", fdr_alpha=0.30)
+
+
+def test_compare_family_cli_writes_json_output(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
+    runs_dir = tmp_path / "runs"
+    output_path = tmp_path / "family.json"
+    _write_family_manifest(
+        runs_dir / "base" / "manifest.json",
+        run_id="base-run",
+        family_id="family-a",
+        candidate_id="base",
+        selection_policy="pre_registered",
+        run_verdict="PROMOTE",
+        p_value=0.01,
+    )
+
+    exit_code = main(
+        [
+            "--compare-family",
+            str(runs_dir),
+            "--family-id",
+            "family-a",
+            "--json",
+            "--output",
+            str(output_path),
+        ]
+    )
+    output = capsys.readouterr().out
+    payload = json.loads(output_path.read_text(encoding="utf-8"))
+
+    assert exit_code == 0
+    assert f"Family comparison: {output_path}" in output
+    assert payload["family_id"] == "family-a"
+    assert payload["rows"][0]["family_verdict"] == "FAMILY_PROMOTE"
+
+
+def test_compare_family_cli_rejects_invalid_alpha(tmp_path: Path):
+    _write_family_manifest(tmp_path / "manifest.json", run_id="single-run")
+
+    with pytest.raises(ValueError, match="family_fdr_alpha must be greater than 0 and at most 0.25"):
+        main(
+            [
+                "--compare-family",
+                str(tmp_path / "manifest.json"),
+                "--family-fdr-alpha",
+                "0.30",
+            ]
+        )
 
 
 def _write_family_manifest(
