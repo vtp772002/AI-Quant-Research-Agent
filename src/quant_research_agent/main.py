@@ -42,6 +42,16 @@ from quant_research_agent.registry_export import (
     registry_governance_verification_to_dict,
     verify_registry_governance_pack,
 )
+from quant_research_agent.research_job_queue import (
+    enqueue_research_job,
+    get_research_job,
+    list_research_jobs,
+    research_job_to_dict,
+)
+from quant_research_agent.research_job_worker import (
+    research_worker_result_to_dict,
+    run_research_worker_once,
+)
 from quant_research_agent.llm_provider import ProviderControlPolicy
 from quant_research_agent.research_agents import (
     critique_run_manifest,
@@ -91,6 +101,52 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output", help="Optional path for comparison output.")
     parser.add_argument("--run-batch", nargs="+", help="Run one or more configs and publish batch summary/comparison artifacts.")
     parser.add_argument("--batch-output-dir", default="results/batch", help="Directory for batch summary and comparison artifacts.")
+    parser.add_argument(
+        "--enqueue-research-job",
+        nargs="+",
+        help="Enqueue one durable research batch job for the supplied configs.",
+    )
+    parser.add_argument(
+        "--job-queue-path",
+        default="results/research_jobs.sqlite",
+        help="SQLite research job queue path.",
+    )
+    parser.add_argument("--job-idempotency-key", help="Idempotency key for job enqueue.")
+    parser.add_argument(
+        "--job-output-dir",
+        default="results/job_batches",
+        help="Batch artifact directory persisted in an enqueued job.",
+    )
+    parser.add_argument(
+        "--job-max-attempts",
+        type=int,
+        default=3,
+        help="Maximum worker attempts before dead letter.",
+    )
+    parser.add_argument(
+        "--list-research-jobs",
+        action="store_true",
+        help="List durable research jobs.",
+    )
+    parser.add_argument("--show-research-job", help="Show one durable research job.")
+    parser.add_argument(
+        "--research-worker-run-once",
+        action="store_true",
+        help="Claim and execute at most one durable research job.",
+    )
+    parser.add_argument("--worker-id", default="local-worker", help="Worker id recorded in job leases and events.")
+    parser.add_argument(
+        "--worker-lease-seconds",
+        type=int,
+        default=300,
+        help="Lease duration for --research-worker-run-once.",
+    )
+    parser.add_argument(
+        "--worker-retry-delay-seconds",
+        type=int,
+        default=60,
+        help="Retry delay after a failed worker attempt.",
+    )
     parser.add_argument(
         "--export-registry",
         help="Export a SQLite registry snapshot to an object-store style directory.",
@@ -182,6 +238,59 @@ def main(argv: list[str] | None = None) -> int:
         output_cost_per_1k_tokens_usd=args.llm_output_cost_per_1k,
         expected_output_tokens=args.llm_expected_output_tokens,
     )
+
+    if args.enqueue_research_job:
+        if not args.job_idempotency_key:
+            raise SystemExit("--enqueue-research-job requires --job-idempotency-key")
+        job = enqueue_research_job(
+            Path(args.job_queue_path),
+            config_paths=[Path(path) for path in args.enqueue_research_job],
+            output_dir=Path(args.job_output_dir),
+            idempotency_key=args.job_idempotency_key,
+            comparison_metric=args.comparison_metric,
+            limit=args.limit,
+            max_attempts=args.job_max_attempts,
+            submitted_by="cli",
+        )
+        print(json.dumps(research_job_to_dict(job), indent=2, sort_keys=True))
+        return 0
+
+    if args.list_research_jobs:
+        jobs = list_research_jobs(
+            Path(args.job_queue_path),
+            limit=args.limit or 100,
+        )
+        print(
+            json.dumps(
+                {"jobs": [research_job_to_dict(job) for job in jobs]},
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 0
+
+    if args.show_research_job:
+        job = get_research_job(Path(args.job_queue_path), args.show_research_job)
+        if job is None:
+            raise SystemExit(f"research job not found: {args.show_research_job}")
+        print(json.dumps(research_job_to_dict(job), indent=2, sort_keys=True))
+        return 0
+
+    if args.research_worker_run_once:
+        result = run_research_worker_once(
+            Path(args.job_queue_path),
+            worker_id=args.worker_id,
+            lease_seconds=args.worker_lease_seconds,
+            retry_delay_seconds=args.worker_retry_delay_seconds,
+        )
+        print(
+            json.dumps(
+                research_worker_result_to_dict(result),
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 0 if result.outcome in {"idle", "completed"} else 1
 
     if args.recommend_family_promotion:
         if not args.promotion_family_id or not args.promotion_run_id:

@@ -33,6 +33,14 @@ from quant_research_agent.promotion_authorization import (
     recommend_family_promotion,
     verify_promotion_ledger,
 )
+from quant_research_agent.research_job_queue import (
+    enqueue_research_job,
+    get_research_job,
+    list_research_jobs,
+    research_job_event_to_dict,
+    research_job_events,
+    research_job_to_dict,
+)
 from quant_research_agent.signals import generate_signal_as_of, signal_result_to_dict
 from quant_research_agent.workflow import run_configured_workflow
 
@@ -73,6 +81,16 @@ class DecideFamilyPromotionRequest(BaseModel):
     recommendation_id: str
     decision: str
     note: str = ""
+
+
+class EnqueueResearchJobRequest(BaseModel):
+    config_paths: list[str]
+    output_dir: str = "results/job_batches"
+    idempotency_key: str
+    comparison_metric: str = "sharpe"
+    limit: int | None = None
+    max_attempts: int = 3
+    queue_path: str = "results/research_jobs.sqlite"
 
 
 def create_app() -> FastAPI:
@@ -275,6 +293,71 @@ def create_app() -> FastAPI:
             )
         )
 
+    @app.post("/jobs/research")
+    def enqueue_job(
+        request: EnqueueResearchJobRequest,
+        principal: ApiPrincipal = Depends(require_role("researcher")),
+    ) -> dict[str, object]:
+        return _job_payload(
+            lambda: research_job_to_dict(
+                enqueue_research_job(
+                    Path(request.queue_path),
+                    config_paths=[Path(path) for path in request.config_paths],
+                    output_dir=Path(request.output_dir),
+                    idempotency_key=request.idempotency_key,
+                    comparison_metric=request.comparison_metric,
+                    limit=request.limit,
+                    max_attempts=request.max_attempts,
+                    submitted_by=f"api:{principal.actor_id}",
+                )
+            )
+        )
+
+    @app.get("/jobs/research")
+    def research_jobs(
+        queue_path: str = "results/research_jobs.sqlite",
+        limit: int = 20,
+        principal: ApiPrincipal = Depends(require_role("viewer")),
+    ) -> dict[str, object]:
+        _ = principal
+        return _job_payload(
+            lambda: {
+                "jobs": [
+                    research_job_to_dict(job)
+                    for job in list_research_jobs(Path(queue_path), limit=limit)
+                ]
+            }
+        )
+
+    @app.get("/jobs/research/{job_id}")
+    def research_job(
+        job_id: str,
+        queue_path: str = "results/research_jobs.sqlite",
+        principal: ApiPrincipal = Depends(require_role("viewer")),
+    ) -> dict[str, object]:
+        _ = principal
+        job = _job_payload(lambda: get_research_job(Path(queue_path), job_id))
+        if job is None:
+            raise HTTPException(status_code=404, detail=f"research job not found: {job_id}")
+        return research_job_to_dict(job)
+
+    @app.get("/jobs/research/{job_id}/events")
+    def research_job_event_log(
+        job_id: str,
+        queue_path: str = "results/research_jobs.sqlite",
+        principal: ApiPrincipal = Depends(require_role("viewer")),
+    ) -> dict[str, object]:
+        _ = principal
+        return _job_payload(
+            lambda: {
+                "job_id": job_id,
+                "events": [
+                    research_job_event_to_dict(event)
+                    for event in research_job_events(Path(queue_path), job_id)
+                ],
+            }
+        )
+
     return app
 
 
@@ -301,6 +384,17 @@ def _promotion_payload(loader):
         return loader()
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="family promotion artifact not found") from exc
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def _job_payload(loader):
+    try:
+        return loader()
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except PermissionError as exc:

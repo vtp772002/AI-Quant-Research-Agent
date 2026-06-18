@@ -108,6 +108,8 @@ ledger.
     preserving credential guards, transcripts, validation, and review gating.
 38. Require a researcher recommendation and a distinct operator decision before
     treating `FAMILY_PROMOTE` evidence as an authorized research promotion.
+39. Enqueue durable research batch jobs and execute them through a lease-based
+    one-shot worker with retry and dead-letter evidence.
 
 ## Data Contract
 
@@ -300,6 +302,17 @@ artifacts for the generated run bundle directory. It is suitable for cron,
 GitHub Actions, or a future worker, but it is not a queue or distributed
 scheduler.
 
+The durable research-job queue adds the local operating layer around batch
+orchestration. Jobs are stored in a separate SQLite database with a unique
+idempotency key, serialized request parameters, attempt budget, availability
+time, lease ownership, result/error payloads, and lifecycle timestamps. Claim
+uses a write transaction so concurrent workers cannot lease the same active
+job. Expired leases are recoverable until the attempt budget is exhausted;
+final expired attempts and repeated execution failures move to dead letter.
+Lifecycle events use a monotonic SQLite sequence. Public CLI/API payloads redact
+lease tokens. Execution is at-least-once and process supervision remains
+external to the repository.
+
 Registry export writes newline-delimited JSON records, an export manifest, a
 reviewable Postgres upsert handoff SQL file, a governance manifest, and a
 hash-chain file from the local SQLite registry. The governance manifest records
@@ -385,6 +398,10 @@ recommend. Operator keys may decide. API events use sanitized key ids and never
 persist raw API keys. Promotion actor separation uses a stable SHA-256 key
 fingerprint rather than the masked id used in request logs.
 
+The internal API exposes research-job enqueue to researcher keys and
+list/show/events queries to viewer keys. HTTP requests only persist or inspect
+jobs; they do not execute worker code in the API process.
+
 Execution simulation converts as-of signal target weights into a broker-free
 order plan with participation gates. It does not route orders, reserve locates,
 send broker instructions, reconcile fills, or implement a kill switch.
@@ -423,4 +440,5 @@ risk status. It does not compute forward returns or claim execution feasibility.
   immutable object storage, credentialed managed registry deployment,
   enterprise identity, tenant-scoped SaaS authorization, managed immutable
   promotion-ledger storage, managed HMAC key rotation, distributed provider
-  quota orchestration, or a full production execution simulator.
+  quota orchestration, managed worker supervision, distributed queue
+  deployment, or a full production execution simulator.

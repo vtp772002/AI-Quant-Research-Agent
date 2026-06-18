@@ -203,6 +203,9 @@ def test_api_route_metadata_protects_non_health_routes():
     assert _route_total_dependencies(app, "/promotions/recommend") == 1
     assert _route_total_dependencies(app, "/promotions/decide") == 1
     assert _route_total_dependencies(app, "/promotions/verify") == 1
+    assert _route_total_dependencies(app, "/jobs/research") == 1
+    assert _route_total_dependencies(app, "/jobs/research/{job_id}") == 1
+    assert _route_total_dependencies(app, "/jobs/research/{job_id}/events") == 1
 
 
 def test_api_exposes_review_queue_summary_status_and_audit(monkeypatch, tmp_path: Path):
@@ -349,6 +352,63 @@ def test_api_enforces_two_person_family_promotion_roles(monkeypatch, tmp_path: P
     assert "operator-secret" not in rendered_ledger
 
 
+def test_api_enqueues_and_queries_durable_research_jobs(monkeypatch, tmp_path: Path):
+    try:
+        from quant_research_agent.api import EnqueueResearchJobRequest
+    except ImportError:
+        raise AssertionError("durable research job API contract is not implemented")
+
+    monkeypatch.setenv(
+        "AIQRA_API_KEYS",
+        "viewer-secret:viewer,research-secret:researcher",
+    )
+    clear_auth_cache()
+    queue_path = tmp_path / "research_jobs.sqlite"
+    app = create_app()
+    viewer = require_role("viewer")(_request(), "viewer-secret")
+    researcher = require_role("researcher")(_request(), "research-secret")
+    request = EnqueueResearchJobRequest(
+        config_paths=["configs/base.yaml"],
+        output_dir=str(tmp_path / "queued_batch"),
+        idempotency_key="api-daily-job",
+        comparison_metric="sharpe",
+        limit=1,
+        max_attempts=3,
+        queue_path=str(queue_path),
+    )
+
+    enqueued = _endpoint(app, "/jobs/research")(
+        request=request,
+        principal=researcher,
+    )
+    duplicate = _endpoint(app, "/jobs/research")(
+        request=request,
+        principal=researcher,
+    )
+    listed = _endpoint_by_method(app, "/jobs/research", "GET")(
+        queue_path=str(queue_path),
+        limit=20,
+        principal=viewer,
+    )
+    shown = _endpoint(app, "/jobs/research/{job_id}")(
+        job_id=enqueued["job_id"],
+        queue_path=str(queue_path),
+        principal=viewer,
+    )
+    events = _endpoint(app, "/jobs/research/{job_id}/events")(
+        job_id=enqueued["job_id"],
+        queue_path=str(queue_path),
+        principal=viewer,
+    )
+
+    assert duplicate["job_id"] == enqueued["job_id"]
+    assert listed["jobs"][0]["job_id"] == enqueued["job_id"]
+    assert shown["status"] == "queued"
+    assert [event["event_type"] for event in events["events"]] == ["enqueued"]
+    assert events["events"][0]["detail"]["submitted_by"] == f"api:{researcher.actor_id}"
+    assert "research-secret" not in json.dumps(events, sort_keys=True)
+
+
 def test_api_request_logs_include_sanitized_auth_context(monkeypatch):
     monkeypatch.setenv("AIQRA_API_KEYS", "viewer-secret:viewer")
     clear_auth_cache()
@@ -418,6 +478,13 @@ def _endpoint(app, path: str):
         if getattr(route, "path", None) == path:
             return route.endpoint
     raise AssertionError(f"route not found: {path}")
+
+
+def _endpoint_by_method(app, path: str, method: str):
+    for route in app.router.routes:
+        if getattr(route, "path", None) == path and method in getattr(route, "methods", set()):
+            return route.endpoint
+    raise AssertionError(f"route not found: {method} {path}")
 
 
 def _request(path: str = "/metrics", method: str = "GET"):

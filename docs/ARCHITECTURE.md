@@ -53,6 +53,10 @@ quant_research_agent.managed_registry
   deterministic local dry-run adapter for Postgres/object-lock registry
   deployment bundles
 
+quant_research_agent.research_job_queue / research_job_worker
+  durable local batch job state, transactional leases, retry/dead-letter
+  transitions, lifecycle events, and one-shot worker execution
+
 quant_research_agent.promotion_authorization
   two-person family-promotion recommendation, decision, frozen evidence,
   serialized append, HMAC-authenticated hash-chain verification, and summary
@@ -180,6 +184,11 @@ Family promotion follows the same separation. Listing and verification are
 queries. Recommendation and decision are commands that delegate to
 `promotion_authorization`; controllers supply authenticated actor identity and
 role but do not implement promotion rules.
+
+Research jobs follow the same command/query split. Enqueue and worker
+transitions are commands owned by `research_job_queue`; list, show, and events
+are queries. The worker delegates execution to `operations.run_research_batch`
+and never updates queue rows directly.
 
 Promotion actor separation uses a collision-resistant SHA-256 API-key
 fingerprint distinct from the masked `api_key_id` used in operational logs.
