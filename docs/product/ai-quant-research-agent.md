@@ -86,23 +86,25 @@ ledger.
 24. Export the local registry as offline object-store/Postgres handoff artifacts.
 25. Export and verify immutable registry governance packs with artifact hashes,
     retention metadata, family evidence, and a hash chain.
-26. Load vendor snapshot drops through the validated OHLCV snapshot boundary.
-27. Extract draft alpha experiment templates from paper or blog text.
-28. Simulate as-of execution plans without routing orders or contacting brokers.
-29. Generate validated research idea configs from prior run memory, critique
+26. Stage and verify local dry-run managed registry deployment bundles with
+    Postgres apply plans and object-lock inventory.
+27. Load vendor snapshot drops through the validated OHLCV snapshot boundary.
+28. Extract draft alpha experiment templates from paper or blog text.
+29. Simulate as-of execution plans without routing orders or contacting brokers.
+30. Generate validated research idea configs from prior run memory, critique
     existing runs, and orchestrate iterative alpha-mining batches.
-30. Run idea generation through a governed provider boundary with deterministic,
+31. Run idea generation through a governed provider boundary with deterministic,
     fixture, or explicitly allowed command providers and transcript artifacts.
-31. Gate generated idea execution behind a human review queue with draft,
+32. Gate generated idea execution behind a human review queue with draft,
     approved, rejected, ran, and archived statuses.
-32. Persist an append-only review audit ledger for generated idea creation,
+33. Persist an append-only review audit ledger for generated idea creation,
     status changes, and run marking.
-33. Protect non-health internal API routes with API keys and role-scoped access.
-34. Emit API request logs with sanitized authenticated actor and authorization
+34. Protect non-health internal API routes with API keys and role-scoped access.
+35. Emit API request logs with sanitized authenticated actor and authorization
     result context.
-35. Expose review queue summary, audit, status-update, and run-approved
+36. Expose review queue summary, audit, status-update, and run-approved
     operations through the role-scoped internal API.
-36. Generate research ideas through an opt-in live OpenAI provider while
+37. Generate research ideas through an opt-in live OpenAI provider while
     preserving credential guards, transcripts, validation, and review gating.
 
 ## Data Contract
@@ -295,6 +297,17 @@ or hash-chain evidence no longer match. This is an offline migration and
 object-store handoff surface, not a managed database service, migration tool, or
 cloud object-lock retention policy.
 
+Managed registry deployment staging consumes a verified registry governance
+pack and writes a deterministic local dry-run deployment bundle. The bundle
+contains `deployment_manifest.json`, `postgres_apply_plan.sql`,
+`object_lock_inventory.ndjson`, and copied governance artifacts under a local
+`object_store/` directory. The deployment manifest records adapter mode,
+source governance hash, owner, Postgres schema/table, object retention days,
+legal-hold metadata, and explicit checks that no credentials, network calls, or
+external mutations occurred. The verifier recomputes hashes and exits non-zero
+if the apply plan, inventory, or staged objects are missing or changed. This is
+an executable handoff contract, not a live provider deployment.
+
 Vendor snapshot ingestion treats commercial data as a validated file drop at the
 same OHLCV boundary as CSV snapshots. It requires explicit provenance review and
 does not fetch live data from vendor APIs or manage credentials.
@@ -375,10 +388,11 @@ risk status. It does not compute forward returns or claim execution feasibility.
   signal snapshots, broker-free execution simulation, an advisory
   research-validity gate with within-run Benjamini-Hochberg FDR correction,
   cross-run experiment-family controls, locked institutional holdout manifests,
-  and immutable registry governance export packs, but
+  immutable registry governance export packs, and local dry-run managed
+  registry deployment bundles, but
   these remain research approximations and do not replace broker execution
   data, direct securities-lending feeds, direct vendor market data APIs, venue
   routing analysis, independent alpha review, managed holdout storage,
-  immutable object storage, managed registry deployment,
+  immutable object storage, credentialed managed registry deployment,
   multi-user SaaS authorization, provider-specific LLM evals and
   rate-limit orchestration, or a full production execution simulator.

@@ -90,6 +90,8 @@ Export the local registry for object-store/Postgres handoff:
 ```bash
 python -m quant_research_agent.main --export-registry results/registry_export --registry-path results/experiments.sqlite
 python -m quant_research_agent.main --verify-registry-governance results/registry_export
+python -m quant_research_agent.main --stage-managed-registry results/managed_registry --registry-governance-dir results/registry_export
+python -m quant_research_agent.main --verify-managed-registry results/managed_registry
 ```
 
 Extract a draft experiment template from paper or blog text:
@@ -245,6 +247,8 @@ The research report includes:
 - Offline registry export artifacts for object-store and Postgres migration
   handoff review, including an immutable governance manifest, artifact hashes,
   retention metadata, family evidence, and a verifiable hash chain.
+- Local dry-run managed registry deployment bundles with a Postgres apply plan,
+  object-lock inventory, copied governance artifacts, and tamper verification.
 - Vendor snapshot ingestion through the same validated OHLCV snapshot boundary.
 - Heuristic paper-to-alpha extraction into draft experiment templates.
 - Broker-free execution simulation that applies participation gates without
@@ -297,11 +301,12 @@ python -m quant_research_agent.api
   generation, broker-free execution simulation, human review gating, review
   queue API endpoints for generated ideas, an advisory research-validity gate
   with within-run FDR correction, cross-run experiment-family controls, locked
-  institutional holdout manifests, and immutable registry governance export
-  packs, but no live vendor API integration,
+  institutional holdout manifests, immutable registry governance export packs,
+  and deterministic local managed-registry deployment bundles, but no live
+  vendor API integration,
   broker-grade locate entitlement feed, paper/live broker execution, order
-  management, compliance workflow, managed Postgres/object-lock registry
-  deployment, or multi-user family authorization.
+  management, compliance workflow, live managed Postgres/object-lock registry
+  mutation, or multi-user family authorization.
 
 ## Production Readiness Path
 
@@ -322,6 +327,8 @@ Implemented Level 1 foundations:
 - Offline registry export handoff.
 - Immutable registry governance export packs with hash-chain verification,
   owner/retention metadata, and family evidence.
+- Local dry-run managed registry deployment staging with Postgres apply plans,
+  object-lock inventory, and verifier.
 - Vendor snapshot boundary, paper-to-alpha templates, and execution simulation.
 - Research idea generation, critique, memory, paper-to-alpha v2, and alpha-mining
   orchestration with deterministic fallback, an opt-in live OpenAI provider,
@@ -335,8 +342,8 @@ Implemented Level 1 foundations:
 
 Deferred until separate stories:
 
-- Managed Postgres/object-lock registry deployment with migrations and enforced
-  retention policy.
+- Credentialed managed Postgres/object-lock provider deployment with applied
+  migrations and enforced retention policy.
 - Queue-backed scheduler/worker orchestration beyond the provided daily-run script.
 - Multi-user SaaS controls beyond API-key roles.
 - Live commercial data vendor API integration with credentials and rate-limit handling.
@@ -347,7 +354,8 @@ Deferred until separate stories:
 
 - Add reviewed prompt templates and additional provider-specific adapters after
   live OpenAI transcripts have been reviewed.
-- Promote registry governance packs into managed Postgres/object-lock deployment.
+- Promote local managed registry deployment bundles into credentialed provider
+  adapters after ownership and secrets handling are specified.
 - Add direct vendor API and securities-lending integrations after credential,
   entitlement, and provenance contracts are specified.
 - Add retention enforcement after managed storage ownership and credentials are

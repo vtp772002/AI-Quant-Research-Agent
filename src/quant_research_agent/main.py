@@ -20,6 +20,12 @@ from quant_research_agent.idea_review import (
     review_summary,
     update_idea_status,
 )
+from quant_research_agent.managed_registry import (
+    managed_registry_deployment_to_dict,
+    managed_registry_verification_to_dict,
+    stage_managed_registry_deployment,
+    verify_managed_registry_deployment,
+)
 from quant_research_agent.operations import batch_result_to_dict, run_research_batch
 from quant_research_agent.paper_alpha import template_to_config, write_alpha_template
 from quant_research_agent.registry_export import (
@@ -86,6 +92,21 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--registry-retention-days", type=int, default=365, help="Minimum retention days recorded in registry governance exports.")
     parser.add_argument("--previous-governance-manifest", help="Optional previous governance manifest path to hash-link into this export.")
     parser.add_argument("--verify-registry-governance", help="Verify a registry governance export directory.")
+    parser.add_argument("--stage-managed-registry", help="Stage a local dry-run managed Postgres/object-lock deployment bundle.")
+    parser.add_argument("--registry-governance-dir", help="Source registry governance export directory for --stage-managed-registry.")
+    parser.add_argument("--managed-registry-owner", default="research-ops", help="Owner recorded in managed registry deployment bundles.")
+    parser.add_argument("--managed-registry-schema", default="research_registry", help="Postgres schema recorded in managed registry apply plans.")
+    parser.add_argument("--managed-registry-table", default="experiment_runs", help="Postgres table recorded in managed registry apply plans.")
+    parser.add_argument("--managed-registry-object-prefix", default="research/registry", help="Object prefix recorded in local object-lock inventory.")
+    parser.add_argument("--managed-registry-retention-days", type=int, default=730, help="Retention days recorded in local object-lock inventory.")
+    parser.add_argument(
+        "--managed-registry-no-legal-hold",
+        action="store_false",
+        dest="managed_registry_legal_hold",
+        default=True,
+        help="Record legal hold=false in local object-lock inventory.",
+    )
+    parser.add_argument("--verify-managed-registry", help="Verify a local dry-run managed registry deployment bundle.")
     parser.add_argument("--paper-to-alpha", help="Extract a draft alpha experiment template from a paper/blog text file.")
     parser.add_argument("--template-output", help="Output YAML path for --paper-to-alpha.")
     parser.add_argument("--simulate-execution", action="store_true", help="Simulate an as-of execution plan without placing trades.")
@@ -261,6 +282,27 @@ def main(argv: list[str] | None = None) -> int:
     if args.verify_registry_governance:
         verification = verify_registry_governance_pack(Path(args.verify_registry_governance))
         print(json.dumps(registry_governance_verification_to_dict(verification), indent=2, sort_keys=True))
+        return 0 if verification.valid else 1
+
+    if args.stage_managed_registry:
+        if not args.registry_governance_dir:
+            raise SystemExit("--stage-managed-registry requires --registry-governance-dir")
+        deployment = stage_managed_registry_deployment(
+            governance_dir=Path(args.registry_governance_dir),
+            output_dir=Path(args.stage_managed_registry),
+            owner=args.managed_registry_owner,
+            postgres_schema=args.managed_registry_schema,
+            postgres_table=args.managed_registry_table,
+            object_prefix=args.managed_registry_object_prefix,
+            retention_days=args.managed_registry_retention_days,
+            legal_hold=args.managed_registry_legal_hold,
+        )
+        print(json.dumps(managed_registry_deployment_to_dict(deployment), indent=2, sort_keys=True))
+        return 0
+
+    if args.verify_managed_registry:
+        verification = verify_managed_registry_deployment(Path(args.verify_managed_registry))
+        print(json.dumps(managed_registry_verification_to_dict(verification), indent=2, sort_keys=True))
         return 0 if verification.valid else 1
 
     if args.paper_to_alpha:
