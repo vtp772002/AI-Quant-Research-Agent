@@ -78,26 +78,28 @@ ledger.
     available on or before that date.
 20. Compare reproducibility manifests across prior runs and rank them by a
     selected test-period metric.
-21. Run scheduled-style research batches over one or more configs and publish
+21. Compare experiment families across prior runs and apply family-level FDR
+    correction before treating a candidate as promotion-ready.
+22. Run scheduled-style research batches over one or more configs and publish
     batch summaries plus comparison artifacts.
-22. Export the local registry as offline object-store/Postgres handoff artifacts.
-23. Load vendor snapshot drops through the validated OHLCV snapshot boundary.
-24. Extract draft alpha experiment templates from paper or blog text.
-25. Simulate as-of execution plans without routing orders or contacting brokers.
-26. Generate validated research idea configs from prior run memory, critique
+23. Export the local registry as offline object-store/Postgres handoff artifacts.
+24. Load vendor snapshot drops through the validated OHLCV snapshot boundary.
+25. Extract draft alpha experiment templates from paper or blog text.
+26. Simulate as-of execution plans without routing orders or contacting brokers.
+27. Generate validated research idea configs from prior run memory, critique
     existing runs, and orchestrate iterative alpha-mining batches.
-27. Run idea generation through a governed provider boundary with deterministic,
+28. Run idea generation through a governed provider boundary with deterministic,
     fixture, or explicitly allowed command providers and transcript artifacts.
-28. Gate generated idea execution behind a human review queue with draft,
+29. Gate generated idea execution behind a human review queue with draft,
     approved, rejected, ran, and archived statuses.
-29. Persist an append-only review audit ledger for generated idea creation,
+30. Persist an append-only review audit ledger for generated idea creation,
     status changes, and run marking.
-30. Protect non-health internal API routes with API keys and role-scoped access.
-31. Emit API request logs with sanitized authenticated actor and authorization
+31. Protect non-health internal API routes with API keys and role-scoped access.
+32. Emit API request logs with sanitized authenticated actor and authorization
     result context.
-32. Expose review queue summary, audit, status-update, and run-approved
+33. Expose review queue summary, audit, status-update, and run-approved
     operations through the role-scoped internal API.
-33. Generate research ideas through an opt-in live OpenAI provider while
+34. Generate research ideas through an opt-in live OpenAI provider while
     preserving credential guards, transcripts, validation, and review gating.
 
 ## Data Contract
@@ -186,6 +188,14 @@ The verdict is advisory. It never changes process exit status and it is not an
 investment, trading, or compliance approval. Within-run Benjamini-Hochberg
 correction does not control false discoveries across unrecorded manual
 experiments or separate historical runs.
+
+Experiment-family controls add the cross-run layer. Runs can declare
+`experiment.family` metadata with family id, hypothesis id, candidate id, and
+selection policy. Family comparison reads related run manifests, extracts the
+US-026 agent-signal p-value from each run, applies Benjamini-Hochberg correction
+across the selected family, and emits `FAMILY_PROMOTE`, `FAMILY_REVIEW`, or
+`FAMILY_REJECT`. Family promotion requires a pre-registered run-level
+`PROMOTE`, comparable provenance, and a family q-value within alpha.
 
 When configured, walk-forward validation divides the backtest results into
 multiple chronological test windows after an initial expanding training period.
@@ -343,11 +353,12 @@ risk status. It does not compute forward returns or claim execution feasibility.
   snapshot ingestion, paper-to-alpha template extraction, LLM-facing research
   idea generation, governed provider transcripts, an opt-in live OpenAI adapter,
   run critique, research memory, iterative alpha mining, an internal API, as-of
-  signal snapshots, broker-free execution simulation, and an advisory
-  research-validity gate with within-run Benjamini-Hochberg FDR correction, but
+  signal snapshots, broker-free execution simulation, an advisory
+  research-validity gate with within-run Benjamini-Hochberg FDR correction, and
+  cross-run experiment-family controls, but
   these remain research approximations and do not replace broker execution
   data, direct securities-lending feeds, direct vendor market data APIs, venue
-  routing analysis, independent alpha review, cross-run experiment-family
-  controls, separately locked institutional holdout datasets, immutable object
-  storage, multi-user SaaS authorization, provider-specific LLM evals and
+  routing analysis, independent alpha review, separately locked institutional
+  holdout datasets, immutable object storage, managed registry governance,
+  multi-user SaaS authorization, provider-specific LLM evals and
   rate-limit orchestration, or a full production execution simulator.

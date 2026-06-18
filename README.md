@@ -74,6 +74,8 @@ Compare generated runs:
 ```bash
 python -m quant_research_agent.main --compare-runs results/runs --comparison-metric sharpe --limit 10
 python -m quant_research_agent.main --compare-runs results/runs --json --output results/run_comparison.json
+python -m quant_research_agent.main --compare-family results/runs --family-id synthetic-momentum-low-volatility-v1
+python -m quant_research_agent.main --compare-family results/runs --json --output results/family_comparison.json
 ```
 
 Run a scheduled-style research batch and publish comparison artifacts:
@@ -202,6 +204,10 @@ The research report includes:
   holdout Sharpe, holdout IC, holdout return, baseline comparison,
   walk-forward stability, data readiness, and Benjamini-Hochberg FDR-adjusted
   holdout IC significance.
+- Cross-run experiment-family comparison verdict (`FAMILY_PROMOTE`,
+  `FAMILY_REVIEW`, or `FAMILY_REJECT`) based on pre-registration, provenance
+  comparability, run-level validity, and family-level Benjamini-Hochberg
+  q-values across related runs.
 - Walk-forward validation across multiple chronological windows.
 - Factor coverage and redundancy diagnostics for selected exposures.
 - Neutralization and liquidity stress tests for the agent signal.
@@ -256,6 +262,8 @@ The research report includes:
   the internal API role boundary.
 - Validity verdict and holdout/FDR evidence in reports, CLI JSON,
   reproducibility manifests, registry metrics, and experiment CSV rows.
+- Experiment-family metadata in configs, manifests, and registry rows, plus
+  CLI family comparison artifacts.
 
 ## Validation
 
@@ -277,11 +285,11 @@ python -m quant_research_agent.api
   snapshot ingestion, paper-to-alpha template extraction, LLM-facing research
   agent contracts, an opt-in live LLM adapter, an internal API, as-of signal
   generation, broker-free execution simulation, human review gating, review
-  queue API endpoints for generated ideas, and an advisory research-validity
-  gate with within-run FDR correction, but no live vendor API integration,
+  queue API endpoints for generated ideas, an advisory research-validity gate
+  with within-run FDR correction, and cross-run experiment-family controls, but no live vendor API integration,
   broker-grade locate entitlement feed, paper/live broker execution, order
-  management, compliance workflow, separately locked holdout dataset, or
-  cross-run experiment-family controls.
+  management, compliance workflow, separately locked holdout dataset, managed
+  immutable registry governance, or multi-user family authorization.
 
 ## Production Readiness Path
 
@@ -306,6 +314,8 @@ Implemented Level 1 foundations:
   and human approval before generated idea configs run.
 - Advisory research-validity promotion gate with chronological holdout,
   Benjamini-Hochberg FDR correction, named checks, and artifact evidence.
+- Cross-run experiment-family controls with pre-registration metadata,
+  family-level FDR correction, registry fields, and Markdown/JSON artifacts.
 
 Deferred until separate stories:
 
@@ -314,8 +324,8 @@ Deferred until separate stories:
 - Multi-user SaaS controls beyond API-key roles.
 - Live commercial data vendor API integration with credentials and rate-limit handling.
 - Paper trading, broker integration, hard risk gates, reconciliation, and kill switch controls.
-- Cross-run experiment-family controls over the registry and separately locked
-  institutional holdout datasets.
+- Immutable registry governance and separately locked institutional holdout
+  datasets.
 
 ## Next Steps
 
@@ -324,7 +334,7 @@ Deferred until separate stories:
 - Promote registry export handoff into managed Postgres/object-storage deployment.
 - Add direct vendor API and securities-lending integrations after credential,
   entitlement, and provenance contracts are specified.
-- Add cross-run experiment-family controls once registry governance defines the
-  family of candidate runs being compared.
+- Promote experiment-family registry metadata into managed immutable storage
+  once ownership and retention rules are defined.
 - Add paper-trading stories only after risk gates, reconciliation, and kill-switch
   requirements are documented.
