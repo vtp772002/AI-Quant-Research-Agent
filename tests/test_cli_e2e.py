@@ -61,6 +61,11 @@ data:
 
 experiment:
   name: cli_e2e_signal
+  family:
+    family_id: cli-e2e-family
+    hypothesis_id: cli-e2e-hypothesis
+    candidate_id: base
+    selection_policy: pre_registered
   train_fraction: 0.7
   signal:
     positive_factors: [momentum_20d]
@@ -146,6 +151,12 @@ report:
     assert manifest["artifacts"]["report_sha256"] == file_sha256(report_path)
     assert manifest["artifacts"]["experiments_sha256"] == file_sha256(experiments_path)
     assert manifest["data"]["locate_history_sha256"] == file_sha256(locate_path)
+    assert manifest["experiment_family"] == {
+        "candidate_id": "base",
+        "family_id": "cli-e2e-family",
+        "hypothesis_id": "cli-e2e-hypothesis",
+        "selection_policy": "pre_registered",
+    }
     assert manifest["research_validity"] == payload["research_validity"]
     assert manifest["metrics"]["holdout"] == payload["metrics"]["holdout"]
     assert manifest["metrics"]["validation"] == payload["metrics"]["test"]

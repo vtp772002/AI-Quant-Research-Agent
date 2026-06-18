@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from sqlite3 import connect
 from types import SimpleNamespace
 
 from fastapi import HTTPException
@@ -29,8 +30,41 @@ def test_experiment_registry_records_and_queries_run(tmp_path: Path):
     assert record.test_sharpe == 1.25
     assert record.metrics["holdout"]["sharpe"] == 0.75
     assert record.metrics["research_validity"]["verdict"] == "REVIEW"
+    assert record.experiment_family_id == "family-v1"
+    assert record.hypothesis_id == "hypothesis-v1"
+    assert record.candidate_id == "candidate-a"
+    assert record.selection_policy == "pre_registered"
     assert get_run(registry_path, "run-001") == record
     assert [item.run_id for item in list_runs(registry_path)] == ["run-001"]
+
+
+def test_experiment_registry_migrates_existing_rows_for_family_metadata(tmp_path: Path):
+    registry_path = tmp_path / "experiments.sqlite"
+    manifest = _manifest(run_id="run-001", report_path=tmp_path / "report.md")
+    legacy = dict(manifest)
+    legacy.pop("experiment_family")
+    record_run(registry_path, legacy)
+    with connect(registry_path) as connection:
+        columns_before = {
+            row[1]
+            for row in connection.execute("PRAGMA table_info(experiment_runs)").fetchall()
+        }
+        connection.execute("ALTER TABLE experiment_runs DROP COLUMN experiment_family_id")
+        connection.execute("ALTER TABLE experiment_runs DROP COLUMN hypothesis_id")
+        connection.execute("ALTER TABLE experiment_runs DROP COLUMN candidate_id")
+        connection.execute("ALTER TABLE experiment_runs DROP COLUMN selection_policy")
+        columns_after_drop = {
+            row[1]
+            for row in connection.execute("PRAGMA table_info(experiment_runs)").fetchall()
+        }
+
+    assert "experiment_family_id" in columns_before
+    assert "experiment_family_id" not in columns_after_drop
+
+    migrated = record_run(registry_path, manifest)
+
+    assert migrated.experiment_family_id == "family-v1"
+    assert get_run(registry_path, "run-001").selection_policy == "pre_registered"
 
 
 def test_generate_signal_as_of_uses_only_available_dates(tmp_path: Path):
@@ -459,6 +493,12 @@ def _manifest(run_id: str, report_path: Path) -> dict[str, object]:
             "report_path": str(report_path),
             "experiments_path": str(report_path.with_name("experiments.csv")),
             "manifest_path": str(report_path.with_name("manifest.json")),
+        },
+        "experiment_family": {
+            "family_id": "family-v1",
+            "hypothesis_id": "hypothesis-v1",
+            "candidate_id": "candidate-a",
+            "selection_policy": "pre_registered",
         },
         "metrics": {
             "test": {

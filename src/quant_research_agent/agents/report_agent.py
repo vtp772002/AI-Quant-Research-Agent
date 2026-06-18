@@ -607,26 +607,27 @@ def _decision_summary(result: ResearchRunResult) -> str:
     metrics = result.backtest.metrics["test"]
     if validity.verdict == "PROMOTE":
         return (
-            "The research validity gate promotes this signal for the next research stage. "
-            "Promotion is still not investment approval; it means the configured holdout, FDR, baseline, stability, and data checks passed."
+            "The run-level research validity gate promotes this signal for the next research stage. "
+            "Promotion is still not investment approval or final family-level approval; it means the configured holdout, FDR, "
+            "baseline, stability, and data checks passed for this run."
         )
     if validity.verdict == "REVIEW":
         return (
-            "The research validity gate requires human review before this signal can advance. "
+            "The run-level research validity gate requires human review before this signal can advance. "
             "Core evidence may be acceptable, but at least one comparative, stability, or data-readiness requirement needs inspection."
         )
     if metrics["ic_mean"] > 0 and metrics["sharpe"] > 0:
         return (
-            "The research validity gate rejects promotion even though validation IC and Sharpe are positive. "
+            "The run-level research validity gate rejects promotion even though validation IC and Sharpe are positive. "
             "Use the failed holdout or FDR checks as the next iteration target."
         )
     if metrics["ic_mean"] > 0:
         return (
-            "The research validity gate rejects promotion. The signal shows positive validation rank correlation but weak portfolio conversion. "
+            "The run-level research validity gate rejects promotion. The signal shows positive validation rank correlation but weak portfolio conversion. "
             "Investigate turnover, concentration, and whether the long/short cutoffs are too aggressive."
         )
     return (
-        "The research validity gate rejects promotion. The signal is not supported in validation in this run. Treat it as rejected until a more robust "
+        "The run-level research validity gate rejects promotion. The signal is not supported in validation in this run. Treat it as rejected until a more robust "
         "variant improves IC stability without increasing overfit risk."
     )
 

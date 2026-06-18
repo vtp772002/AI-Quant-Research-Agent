@@ -87,6 +87,12 @@ def write_reproducibility_pack(
             "copied_path": str(context.copied_config_path),
             "sha256": context.config_sha256,
         },
+        "experiment_family": {
+            "family_id": config.experiment.family.family_id,
+            "hypothesis_id": config.experiment.family.hypothesis_id,
+            "candidate_id": config.experiment.family.candidate_id,
+            "selection_policy": config.experiment.family.selection_policy,
+        },
         "code": context.code,
         "data": _data_fingerprint(config=config, result=result),
         "artifacts": {

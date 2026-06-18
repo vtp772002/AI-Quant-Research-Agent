@@ -34,6 +34,10 @@ CREATE TABLE IF NOT EXISTS experiment_runs (
     metrics_json TEXT NOT NULL,
     data_json TEXT NOT NULL,
     artifacts_json TEXT NOT NULL,
+    experiment_family_id TEXT,
+    hypothesis_id TEXT,
+    candidate_id TEXT,
+    selection_policy TEXT,
     created_at TEXT NOT NULL
 );
 
@@ -70,6 +74,10 @@ class ExperimentRunRecord:
     metrics: dict[str, Any]
     data: dict[str, Any]
     artifacts: dict[str, Any]
+    experiment_family_id: str | None
+    hypothesis_id: str | None
+    candidate_id: str | None
+    selection_policy: str | None
     created_at: str
 
 
@@ -77,6 +85,7 @@ def initialize_registry(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with _connect(path) as connection:
         connection.executescript(SCHEMA)
+        _migrate_family_columns(connection)
 
 
 def record_run(path: Path, manifest: dict[str, Any]) -> ExperimentRunRecord:
@@ -91,7 +100,8 @@ def record_run(path: Path, manifest: dict[str, Any]) -> ExperimentRunRecord:
                 experiments_path, manifest_path, test_sharpe, test_total_return,
                 test_ic_mean, test_max_drawdown, test_average_turnover,
                 test_average_total_cost, full_sharpe, full_total_return,
-                metrics_json, data_json, artifacts_json, created_at
+                metrics_json, data_json, artifacts_json, experiment_family_id,
+                hypothesis_id, candidate_id, selection_policy, created_at
             )
             VALUES (
                 :run_id, :experiment, :generated_at, :config_sha256, :data_source,
@@ -99,7 +109,8 @@ def record_run(path: Path, manifest: dict[str, Any]) -> ExperimentRunRecord:
                 :experiments_path, :manifest_path, :test_sharpe, :test_total_return,
                 :test_ic_mean, :test_max_drawdown, :test_average_turnover,
                 :test_average_total_cost, :full_sharpe, :full_total_return,
-                :metrics_json, :data_json, :artifacts_json, :created_at
+                :metrics_json, :data_json, :artifacts_json, :experiment_family_id,
+                :hypothesis_id, :candidate_id, :selection_policy, :created_at
             )
             ON CONFLICT(run_id) DO UPDATE SET
                 experiment = excluded.experiment,
@@ -124,6 +135,10 @@ def record_run(path: Path, manifest: dict[str, Any]) -> ExperimentRunRecord:
                 metrics_json = excluded.metrics_json,
                 data_json = excluded.data_json,
                 artifacts_json = excluded.artifacts_json,
+                experiment_family_id = excluded.experiment_family_id,
+                hypothesis_id = excluded.hypothesis_id,
+                candidate_id = excluded.candidate_id,
+                selection_policy = excluded.selection_policy,
                 created_at = excluded.created_at
             """,
             _db_params(record),
@@ -162,6 +177,7 @@ def record_from_manifest(manifest: dict[str, Any]) -> ExperimentRunRecord:
     data = _as_dict(manifest.get("data"))
     code = _as_dict(manifest.get("code"))
     artifacts = _as_dict(manifest.get("artifacts"))
+    family = _as_dict(manifest.get("experiment_family"))
     return ExperimentRunRecord(
         run_id=str(manifest["run_id"]),
         experiment=str(manifest["experiment"]),
@@ -186,6 +202,10 @@ def record_from_manifest(manifest: dict[str, Any]) -> ExperimentRunRecord:
         metrics=metrics,
         data=data,
         artifacts=artifacts,
+        experiment_family_id=_none_or_str(family.get("family_id")),
+        hypothesis_id=_none_or_str(family.get("hypothesis_id")),
+        candidate_id=_none_or_str(family.get("candidate_id")),
+        selection_policy=_none_or_str(family.get("selection_policy")),
         created_at=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
     )
 
@@ -215,6 +235,10 @@ def record_to_dict(record: ExperimentRunRecord) -> dict[str, Any]:
         "metrics": record.metrics,
         "data": record.data,
         "artifacts": record.artifacts,
+        "experiment_family_id": record.experiment_family_id,
+        "hypothesis_id": record.hypothesis_id,
+        "candidate_id": record.candidate_id,
+        "selection_policy": record.selection_policy,
         "created_at": record.created_at,
     }
 
@@ -223,6 +247,22 @@ def _connect(path: Path) -> Connection:
     connection = connect(path)
     connection.row_factory = Row
     return connection
+
+
+def _migrate_family_columns(connection: Connection) -> None:
+    columns = {
+        str(row["name"])
+        for row in connection.execute("PRAGMA table_info(experiment_runs)").fetchall()
+    }
+    migrations = {
+        "experiment_family_id": "ALTER TABLE experiment_runs ADD COLUMN experiment_family_id TEXT",
+        "hypothesis_id": "ALTER TABLE experiment_runs ADD COLUMN hypothesis_id TEXT",
+        "candidate_id": "ALTER TABLE experiment_runs ADD COLUMN candidate_id TEXT",
+        "selection_policy": "ALTER TABLE experiment_runs ADD COLUMN selection_policy TEXT",
+    }
+    for column, statement in migrations.items():
+        if column not in columns:
+            connection.execute(statement)
 
 
 def _db_params(record: ExperimentRunRecord) -> dict[str, Any]:
@@ -250,6 +290,10 @@ def _db_params(record: ExperimentRunRecord) -> dict[str, Any]:
         "metrics_json": json.dumps(record.metrics, sort_keys=True),
         "data_json": json.dumps(record.data, sort_keys=True),
         "artifacts_json": json.dumps(record.artifacts, sort_keys=True),
+        "experiment_family_id": record.experiment_family_id,
+        "hypothesis_id": record.hypothesis_id,
+        "candidate_id": record.candidate_id,
+        "selection_policy": record.selection_policy,
         "created_at": record.created_at,
     }
 
@@ -279,6 +323,10 @@ def _record_from_row(row: Row) -> ExperimentRunRecord:
         metrics=json.loads(row["metrics_json"]),
         data=json.loads(row["data_json"]),
         artifacts=json.loads(row["artifacts_json"]),
+        experiment_family_id=row["experiment_family_id"],
+        hypothesis_id=row["hypothesis_id"],
+        candidate_id=row["candidate_id"],
+        selection_policy=row["selection_policy"],
         created_at=str(row["created_at"]),
     )
 
@@ -287,3 +335,9 @@ def _as_dict(value: Any) -> dict[str, Any]:
     if isinstance(value, dict):
         return value
     return {}
+
+
+def _none_or_str(value: Any) -> str | None:
+    if value is None:
+        return None
+    return str(value)

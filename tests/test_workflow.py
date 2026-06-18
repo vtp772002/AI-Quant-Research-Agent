@@ -287,6 +287,12 @@ def test_research_workflow_produces_metrics_and_report(tmp_path: Path):
             },
             "experiment": {
                 "name": "test_signal",
+                "family": {
+                    "family_id": "test-signal-family",
+                    "hypothesis_id": "test-hypothesis",
+                    "candidate_id": "base",
+                    "selection_policy": "pre_registered",
+                },
                 "train_fraction": 0.7,
                 "signal": {
                     "positive_factors": ["momentum_20d"],
@@ -409,6 +415,7 @@ def test_research_workflow_produces_metrics_and_report(tmp_path: Path):
     assert {check.name for check in result.research_validity.checks}.issuperset(
         {"positive_holdout_sharpe", "fdr_significant", "data_ready"}
     )
+    assert config.experiment.family.family_id == "test-signal-family"
     assert len(result.backtest.walk_forward) == 3
     assert result.backtest.walk_forward[0].metrics["observations"] > 0
     assert result.factor_diagnostics.selected_factors == ["momentum_20d", "volatility_20d", "reversal_20d"]
@@ -442,6 +449,7 @@ def test_research_workflow_produces_metrics_and_report(tmp_path: Path):
     assert "Avg borrow cost" in report_text
     assert "Stress Tests" in report_text
     assert "Research Validity Gate" in report_text
+    assert "run-level research validity" in report_text
     assert f"Verdict: `{result.research_validity.verdict}`" in report_text
     assert "FDR q-value" in report_text
     assert "positive_holdout_sharpe" in report_text
