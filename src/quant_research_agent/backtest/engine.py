@@ -83,6 +83,11 @@ def run_long_short_backtest(
     returns = (raw_returns - costs["total_cost"]).rename("strategy_return").dropna()
 
     ic_by_date = _information_coefficient(aligned)
+    realization_dates = _realization_dates(
+        decision_dates=returns.index,
+        market_dates=close.index,
+        holding_period=holding_period,
+    )
     split_date, validation_start, holdout_start = _split_boundaries(
         returns.index,
         train_fraction=train_fraction,
@@ -98,7 +103,12 @@ def run_long_short_backtest(
     validation_mask = returns.index >= validation_start
     if holdout_start is not None:
         validation_mask &= returns.index < holdout_start
+        validation_mask &= realization_dates < holdout_start
     validation_returns = returns.loc[validation_mask]
+    if holdout_start is not None and validation_returns.empty:
+        raise ValueError(
+            "not enough backtest observations for train, validation, and holdout"
+        )
     validation_metrics = _metric_summary(
         returns=validation_returns,
         ic_by_date=ic_by_date.reindex(validation_returns.index),
@@ -132,7 +142,10 @@ def run_long_short_backtest(
         ),
     }
     pre_holdout_returns = (
-        returns.loc[returns.index < holdout_start]
+        returns.loc[
+            (returns.index < holdout_start)
+            & (realization_dates < holdout_start)
+        ]
         if holdout_start is not None
         else returns
     )
@@ -312,6 +325,19 @@ def _split_boundaries(
         pd.Timestamp(index[validation_position]),
         pd.Timestamp(index[holdout_position]),
     )
+
+
+def _realization_dates(
+    decision_dates: pd.Index,
+    market_dates: pd.Index,
+    holding_period: int,
+) -> pd.Series:
+    ordered_market_dates = pd.Index(market_dates).sort_values().unique()
+    realization_by_decision = pd.Series(
+        ordered_market_dates[holding_period:],
+        index=ordered_market_dates[:-holding_period],
+    )
+    return realization_by_decision.reindex(decision_dates)
 
 
 def _walk_forward_metrics(

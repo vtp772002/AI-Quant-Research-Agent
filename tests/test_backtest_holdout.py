@@ -6,6 +6,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from quant_research_agent.agents import capacity as capacity_module
+from quant_research_agent.agents.capacity import compute_capacity_diagnostics
 from quant_research_agent.agents.robustness import compute_robustness_diagnostics
 from quant_research_agent.backtest.engine import run_long_short_backtest
 from quant_research_agent.config import parse_config
@@ -59,13 +61,14 @@ def _run_backtest(
     *,
     holdout_fraction: float = 0.2,
     walk_forward_windows: int = 0,
+    holding_period: int = 1,
 ):
     return run_long_short_backtest(
         market_data=market_data,
         signal=signal,
         train_fraction=0.5,
         holdout_fraction=holdout_fraction,
-        holding_period=1,
+        holding_period=holding_period,
         rebalance_days=1,
         quantile=0.25,
         transaction_cost_bps=0.0,
@@ -86,6 +89,21 @@ def _change_only_holdout_realized_outcomes(
     for step, date in enumerate(future_dates, start=1):
         changed.loc[(date, ["EEE", "FFF"]), "adj_close"] *= 1.03**step
         changed.loc[(date, ["AAA", "BBB"]), "adj_close"] *= 0.97**step
+    return changed
+
+
+def _change_prices_starting_at_holdout(
+    market_data: pd.DataFrame,
+    holdout_start: pd.Timestamp,
+) -> pd.DataFrame:
+    changed = market_data.copy()
+    dates = pd.Index(
+        changed.index.get_level_values("date").unique()
+    ).sort_values()
+    holdout_dates = dates[dates >= holdout_start]
+    for step, date in enumerate(holdout_dates, start=1):
+        changed.loc[(date, ["EEE", "FFF"]), "adj_close"] *= 1.04**step
+        changed.loc[(date, ["AAA", "BBB"]), "adj_close"] *= 0.96**step
     return changed
 
 
@@ -144,6 +162,46 @@ def test_walk_forward_windows_end_before_holdout():
 
     assert result.walk_forward
     assert all(window.test_end < result.holdout_start for window in result.walk_forward)
+
+
+def test_holding_period_purge_prevents_holdout_price_leakage():
+    market_data, signal = _deterministic_market_and_signal(periods=35)
+    holding_period = 3
+    holdout_fraction = 0.2
+    original = _run_backtest(
+        market_data,
+        signal,
+        holdout_fraction=holdout_fraction,
+        holding_period=holding_period,
+        walk_forward_windows=4,
+    )
+    changed_market_data = _change_prices_starting_at_holdout(
+        market_data,
+        original.holdout_start,
+    )
+    rerun = _run_backtest(
+        changed_market_data,
+        signal,
+        holdout_fraction=holdout_fraction,
+        holding_period=holding_period,
+        walk_forward_windows=4,
+    )
+
+    naive_validation_count = int(
+        (
+            (original.returns.index >= original.validation_start)
+            & (original.returns.index < original.holdout_start)
+        ).sum()
+    )
+
+    assert original.metrics["validation"]["observations"] < naive_validation_count
+    assert original.metrics["holdout"]["observations"] == ceil(
+        len(original.returns) * holdout_fraction
+    )
+    assert original.metrics["train"] == rerun.metrics["train"]
+    assert original.metrics["validation"] == rerun.metrics["validation"]
+    assert original.walk_forward == rerun.walk_forward
+    assert original.metrics["holdout"] != rerun.metrics["holdout"]
 
 
 def test_bootstrap_samples_validation_without_holdout():
@@ -238,11 +296,76 @@ def test_enabled_holdout_rejects_too_few_observations():
         _run_backtest(market_data, signal, holdout_fraction=0.4)
 
 
-def test_enabled_holdout_allows_one_observation_per_partition():
-    market_data, signal = _deterministic_market_and_signal(periods=4)
+def test_enabled_holdout_allows_one_leakage_safe_validation_observation():
+    market_data, signal = _deterministic_market_and_signal(periods=10)
 
     result = _run_backtest(market_data, signal, holdout_fraction=0.2)
 
-    assert result.metrics["train"]["observations"] == 1.0
+    assert result.metrics["train"]["observations"] == 5.0
     assert result.metrics["validation"]["observations"] == 1.0
-    assert result.metrics["holdout"]["observations"] == 1.0
+    assert result.metrics["holdout"]["observations"] == 2.0
+
+
+def test_capacity_participation_gate_uses_validation_costs_only(monkeypatch):
+    market_data, signal = _deterministic_market_and_signal()
+    backtest = _run_backtest(market_data, signal, holdout_fraction=0.2)
+    backtest.costs.loc[:, "max_trade_participation"] = 0.0
+    backtest.costs.loc[
+        backtest.costs.index < backtest.validation_start,
+        "max_trade_participation",
+    ] = 1.0
+    backtest.costs.loc[
+        backtest.costs.index >= backtest.holdout_start,
+        "max_trade_participation",
+    ] = 1.0
+    monkeypatch.setattr(
+        capacity_module,
+        "run_long_short_backtest",
+        lambda **_: backtest,
+    )
+    config = parse_config(
+        {
+            "data": {
+                "source": "synthetic",
+                "universe": ["AAA", "BBB", "CCC", "DDD", "EEE", "FFF"],
+                "start": "2024-01-02",
+                "end": "2024-02-05",
+            },
+            "experiment": {
+                "name": "capacity_holdout_isolation",
+                "train_fraction": 0.5,
+                "signal": {
+                    "positive_factors": ["momentum_20d"],
+                    "negative_factors": [],
+                },
+                "backtest": {
+                    "holding_period": 1,
+                    "rebalance_days": 1,
+                    "quantile": 0.25,
+                },
+                "validation": {
+                    "research_validity": {
+                        "enabled": True,
+                        "holdout_fraction": 0.2,
+                    }
+                },
+                "capacity": {
+                    "notionals": [1_000_000],
+                    "max_trade_participation": 0.1,
+                },
+                "baselines": [],
+            },
+            "report": {},
+        }
+    )
+
+    diagnostics = compute_capacity_diagnostics(
+        market_data=market_data,
+        signal=signal,
+        backtest=backtest,
+        config=config,
+    )
+
+    point = diagnostics.capacity_curve[0]
+    assert point.participation_breach_count == 0
+    assert point.passes_participation_limit is True

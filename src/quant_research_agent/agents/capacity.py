@@ -125,7 +125,19 @@ def _capacity_curve(
             borrow_fee_bps_by_date=borrow_availability.borrow_fee_bps if borrow_availability is not None else None,
         )
         test = result.metrics["test"]
-        breach_count = int((result.costs["max_trade_participation"] > config.experiment.capacity.max_trade_participation).sum())
+        validation_costs = result.costs.loc[
+            result.costs.index >= result.validation_start
+        ]
+        if result.holdout_start is not None:
+            validation_costs = validation_costs.loc[
+                validation_costs.index < result.holdout_start
+            ]
+        breach_count = int(
+            (
+                validation_costs["max_trade_participation"]
+                > config.experiment.capacity.max_trade_participation
+            ).sum()
+        )
         points.append(
             CapacityPoint(
                 notional=notional,
