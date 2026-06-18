@@ -85,7 +85,8 @@ No selected factor pairs exceeded absolute Spearman correlation of 0.75.
 | Split | IC Mean | Sharpe | Max Drawdown | Avg Turnover | Avg Cost | Total Return |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | Train | 0.0209 | 0.23 | -30.68% | 1.73 | 0.17% | 11.58% |
-| Test | -0.0079 | -0.29 | -28.13% | 1.62 | 0.15% | -15.17% |
+| Test | 0.0148 | 0.69 | -15.67% | 1.60 | 0.15% | 10.18% |
+| Holdout | -0.0248 | -0.94 | -26.31% | 1.66 | 0.15% | -22.31% |
 | Full | 0.0123 | 0.09 | -35.43% | 1.70 | 0.16% | -5.35% |
 
 ## Execution Costs
@@ -97,8 +98,8 @@ No selected factor pairs exceeded absolute Spearman correlation of 0.75.
 | Avg impact cost | 0.04% | 0.02% | 0.03% |
 | Avg borrow cost | 0.01% | 0.01% | 0.01% |
 | Avg total cost | 0.17% | 0.15% | 0.16% |
-| Cumulative cost | 34.88% | 12.78% | 47.66% |
-| Avg trade participation | 0.20% | 0.12% | 0.18% |
+| Cumulative cost | 34.88% | 6.04% | 47.66% |
+| Avg trade participation | 0.20% | 0.13% | 0.18% |
 | Max trade participation | 1.51% | 0.69% | 1.51% |
 
 ## Borrow Availability
@@ -121,98 +122,149 @@ Capacity curve:
 
 | Notional | Test Sharpe | Test Return | Avg Cost | Avg Impact | Avg Participation | Max Participation | Breaches | Pass |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| 1,000,000 | -0.25 | -13.84% | 0.13% | 0.00% | 0.01% | 0.07% | 0 | no |
-| 5,000,000 | -0.27 | -14.43% | 0.14% | 0.01% | 0.06% | 0.35% | 0 | no |
-| 10,000,000 | -0.29 | -15.17% | 0.15% | 0.02% | 0.12% | 0.69% | 0 | no |
-| 25,000,000 | -0.35 | -17.35% | 0.18% | 0.05% | 0.30% | 1.74% | 0 | no |
+| 1,000,000 | 0.74 | 11.02% | 0.13% | 0.00% | 0.01% | 0.07% | 0 | yes |
+| 5,000,000 | 0.72 | 10.65% | 0.14% | 0.01% | 0.06% | 0.35% | 0 | yes |
+| 10,000,000 | 0.69 | 10.18% | 0.15% | 0.02% | 0.13% | 0.69% | 0 | yes |
+| 25,000,000 | 0.61 | 8.78% | 0.18% | 0.05% | 0.31% | 1.74% | 0 | yes |
+
+Estimated capacity: 25,000,000 notional under configured gates.
 
 Warnings:
 - Position concentration breached 35% on 7 rebalance dates.
-- No configured notional passed both participation and positive-Sharpe capacity gates.
 
 ## Robustness Diagnostics
 
 | Metric | Mean | 2.5% | 97.5% | Positive Probability |
 | --- | ---: | ---: | ---: | ---: |
-| Test Sharpe | -0.27 | -1.65 | 1.52 | 37.00% |
-| Test IC | -0.0041 | -0.0643 | 0.0629 | 41.50% |
+| Test Sharpe | 0.47 | -1.70 | 2.86 | 65.00% |
+| Test IC | 0.0148 | -0.0575 | 0.0892 | 64.50% |
 
 Parameter Sensitivity:
 
 | Variant | Holding | Quantile | Cost Mult | Test IC | Test Sharpe | Test Cost | Test Return |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| h3_q15 | 3 | 15% | 1.00 | 0.0005 | -0.13 | 0.17% | -6.61% |
-| h3_q20 | 3 | 20% | 1.00 | 0.0005 | -0.78 | 0.14% | -17.98% |
-| h3_q30 | 3 | 30% | 1.00 | 0.0005 | -0.46 | 0.12% | -10.77% |
-| h5_q15 | 5 | 15% | 1.00 | -0.0079 | -0.12 | 0.17% | -11.80% |
-| h5_q20 | 5 | 20% | 1.00 | -0.0079 | -0.29 | 0.15% | -15.17% |
-| h5_q30 | 5 | 30% | 1.00 | -0.0079 | -0.22 | 0.12% | -11.16% |
-| h10_q15 | 10 | 15% | 1.00 | -0.0195 | -0.32 | 0.19% | -34.37% |
-| h10_q20 | 10 | 20% | 1.00 | -0.0195 | -0.50 | 0.16% | -39.59% |
-| h10_q30 | 10 | 30% | 1.00 | -0.0195 | -0.18 | 0.14% | -18.40% |
+| h3_q15 | 3 | 15% | 1.00 | -0.0037 | 0.46 | 0.16% | 3.92% |
+| h3_q20 | 3 | 20% | 1.00 | -0.0037 | -0.88 | 0.14% | -8.00% |
+| h3_q30 | 3 | 30% | 1.00 | -0.0037 | -0.91 | 0.12% | -7.55% |
+| h5_q15 | 5 | 15% | 1.00 | 0.0148 | 0.47 | 0.17% | 7.01% |
+| h5_q20 | 5 | 20% | 1.00 | 0.0148 | 0.69 | 0.15% | 10.18% |
+| h5_q30 | 5 | 30% | 1.00 | 0.0148 | 0.39 | 0.12% | 4.43% |
+| h10_q15 | 10 | 15% | 1.00 | 0.0063 | 0.07 | 0.19% | -2.01% |
+| h10_q20 | 10 | 20% | 1.00 | 0.0063 | -0.18 | 0.16% | -10.93% |
+| h10_q30 | 10 | 30% | 1.00 | 0.0063 | 0.17 | 0.14% | 2.31% |
 
 Cost Sensitivity:
 
 | Variant | Holding | Quantile | Cost Mult | Test IC | Test Sharpe | Test Cost | Test Return |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| cost_0.5x | 5 | 20% | 0.50 | -0.0079 | -0.13 | 0.07% | -9.56% |
-| cost_1x | 5 | 20% | 1.00 | -0.0079 | -0.29 | 0.15% | -15.17% |
-| cost_2x | 5 | 20% | 2.00 | -0.0079 | -0.60 | 0.30% | -25.39% |
+| cost_0.5x | 5 | 20% | 0.50 | 0.0148 | 0.88 | 0.07% | 13.55% |
+| cost_1x | 5 | 20% | 1.00 | 0.0148 | 0.69 | 0.15% | 10.18% |
+| cost_2x | 5 | 20% | 2.00 | 0.0148 | 0.32 | 0.29% | 3.71% |
 
 ## Baseline Comparison
 
 | Strategy | Test IC | Test Sharpe | Test Max Drawdown | Test Turnover | Test Cost | Test Total Return |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| agent_signal | -0.0079 | -0.29 | -28.13% | 1.62 | 0.15% | -15.17% |
-| momentum_20d_only | -0.0437 | -0.76 | -38.94% | 1.72 | 0.16% | -34.60% |
-| low_volatility_only | -0.0288 | -1.32 | -58.96% | 1.02 | 0.10% | -54.37% |
-| reversal_5d_only | 0.0613 | 0.42 | -23.45% | 3.31 | 0.30% | 14.17% |
-| random_cross_section | -0.0001 | -1.34 | -40.71% | 3.27 | 0.30% | -38.08% |
+| agent_signal | 0.0148 | 0.69 | -15.67% | 1.60 | 0.15% | 10.18% |
+| momentum_20d_only | -0.0588 | -1.76 | -33.93% | 1.84 | 0.17% | -34.49% |
+| low_volatility_only | 0.0089 | -0.68 | -25.22% | 1.06 | 0.11% | -16.72% |
+| reversal_5d_only | 0.0452 | 0.39 | -23.45% | 3.30 | 0.31% | 5.89% |
+| random_cross_section | -0.0224 | -1.99 | -30.68% | 3.17 | 0.30% | -29.65% |
 
 ## Stress Tests
 
 | Stress Test | Test IC | Test Sharpe | Test Max Drawdown | Test Turnover | Test Cost | Test Total Return |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| sector_neutral_signal | -0.0089 | -0.25 | -24.44% | 1.51 | 0.14% | -12.32% |
-| liquidity_top_80pct | 0.0048 | -0.15 | -30.15% | 1.47 | 0.13% | -11.02% |
-| sector_neutral_liquidity_top_80pct | 0.0009 | 0.06 | -22.63% | 1.51 | 0.14% | -2.17% |
+| sector_neutral_signal | -0.0038 | 0.10 | -13.70% | 1.56 | 0.14% | 0.05% |
+| liquidity_top_80pct | 0.0309 | 0.59 | -18.68% | 1.48 | 0.13% | 8.54% |
+| sector_neutral_liquidity_top_80pct | 0.0021 | 0.43 | -11.26% | 1.55 | 0.14% | 5.70% |
 
 ## Walk-Forward Validation
 
 | Window | Train Through | Test Range | Obs | IC Mean | Sharpe | Avg Cost | Hit Rate | Total Return |
 | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| wf_01 | 2022-07-05 | 2022-07-12 to 2023-08-29 | 58 | 0.0041 | 0.96 | 0.17% | 50.00% | 26.97% |
-| wf_02 | 2023-08-29 | 2023-09-06 to 2024-10-23 | 58 | 0.0045 | -0.63 | 0.17% | 46.55% | -18.66% |
-| wf_03 | 2024-10-23 | 2024-10-30 to 2025-12-19 | 58 | -0.0009 | -0.25 | 0.15% | 48.28% | -10.47% |
+| wf_01 | 2022-02-23 | 2022-03-02 to 2023-02-14 | 49 | -0.0082 | 0.04 | 0.15% | 48.98% | -3.21% |
+| wf_02 | 2023-02-14 | 2023-02-22 to 2024-02-06 | 49 | 0.0052 | -0.08 | 0.19% | 46.94% | -3.87% |
+| wf_03 | 2024-02-06 | 2024-02-13 to 2025-01-29 | 49 | 0.0374 | 1.14 | 0.15% | 53.06% | 25.19% |
 
 | Strategy | Windows | Mean Test IC | Mean Sharpe | Mean Cost | Positive IC Windows | Median Total Return |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| agent_signal | 3 | 0.0026 | 0.03 | 0.16% | 66.67% | -10.47% |
-| momentum_20d_only | 3 | -0.0183 | -0.33 | 0.17% | 33.33% | -0.61% |
-| low_volatility_only | 3 | -0.0387 | -1.89 | 0.11% | 0.00% | -44.70% |
-| reversal_5d_only | 3 | 0.0206 | -0.46 | 0.31% | 66.67% | -8.45% |
-| random_cross_section | 3 | 0.0032 | -1.60 | 0.31% | 66.67% | -22.27% |
-| sector_neutral_signal | 3 | 0.0023 | -0.22 | 0.15% | 33.33% | -9.10% |
-| liquidity_top_80pct | 3 | 0.0086 | -0.01 | 0.15% | 66.67% | -2.75% |
-| sector_neutral_liquidity_top_80pct | 3 | 0.0009 | -0.23 | 0.14% | 66.67% | 1.08% |
+| agent_signal | 3 | 0.0115 | 0.36 | 0.16% | 66.67% | -3.21% |
+| momentum_20d_only | 3 | -0.0142 | -0.56 | 0.17% | 33.33% | -11.84% |
+| low_volatility_only | 3 | -0.0103 | -1.53 | 0.10% | 33.33% | -25.97% |
+| reversal_5d_only | 3 | 0.0003 | -0.76 | 0.31% | 33.33% | -22.43% |
+| random_cross_section | 3 | -0.0067 | -1.84 | 0.32% | 33.33% | -30.32% |
+| sector_neutral_signal | 3 | 0.0065 | -0.08 | 0.15% | 66.67% | -4.43% |
+| liquidity_top_80pct | 3 | 0.0147 | 0.25 | 0.15% | 66.67% | 0.23% |
+| sector_neutral_liquidity_top_80pct | 3 | 0.0002 | -0.10 | 0.14% | 33.33% | 5.63% |
+
+## Research Validity Gate
+
+Verdict: `REJECT`
+Gate enabled: yes
+Train ends: `2024-04-04`
+Validation starts: `2024-04-11`
+Holdout starts: `2025-02-12`
+FDR alpha: 0.10
+
+| Candidate | Family | Holdout Obs | Holdout IC | Holdout Sharpe | Holdout Return | p-value | FDR q-value |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| agent_signal | primary | 44 | -0.0248 | -0.94 | -22.31% | 0.6837 | 0.8821 |
+| low_volatility_only | baseline | 44 | -0.0633 | -1.72 | -43.67% | 0.8852 | 0.8852 |
+| momentum_20d_only | baseline | 44 | -0.0336 | 0.10 | -0.98% | 0.7632 | 0.8821 |
+| random_cross_section | baseline | 44 | 0.0213 | -0.76 | -12.86% | 0.2447 | 0.8821 |
+| reversal_5d_only | baseline | 44 | 0.0847 | 0.68 | 13.02% | 0.0221 | 0.4418 |
+| liquidity_top_80pct | stress_test | 44 | -0.0148 | -0.61 | -17.17% | 0.6074 | 0.8821 |
+| sector_neutral_liquidity_top_80pct | stress_test | 44 | 0.0045 | -0.10 | -4.94% | 0.4620 | 0.8821 |
+| sector_neutral_signal | stress_test | 44 | -0.0107 | -0.39 | -9.99% | 0.5955 | 0.8821 |
+| h3_q15 | parameter_sensitivity | 44 | 0.0045 | -0.54 | -10.13% | 0.4649 | 0.8821 |
+| h3_q20 | parameter_sensitivity | 44 | 0.0045 | -0.73 | -10.84% | 0.4649 | 0.8821 |
+| h3_q30 | parameter_sensitivity | 44 | 0.0045 | -0.17 | -3.48% | 0.4649 | 0.8821 |
+| h5_q15 | parameter_sensitivity | 44 | -0.0248 | -0.50 | -16.95% | 0.6837 | 0.8821 |
+| h5_q20 | parameter_sensitivity | 44 | -0.0248 | -0.94 | -22.31% | 0.6837 | 0.8821 |
+| h5_q30 | parameter_sensitivity | 44 | -0.0248 | -0.56 | -13.43% | 0.6837 | 0.8821 |
+| h10_q15 | parameter_sensitivity | 44 | -0.0460 | -0.62 | -32.62% | 0.8380 | 0.8821 |
+| h10_q20 | parameter_sensitivity | 44 | -0.0460 | -0.97 | -36.27% | 0.8380 | 0.8821 |
+| h10_q30 | parameter_sensitivity | 44 | -0.0460 | -0.54 | -21.20% | 0.8380 | 0.8821 |
+| cost_0.5x | cost_sensitivity | 44 | -0.0248 | -0.79 | -19.68% | 0.6837 | 0.8821 |
+| cost_1x | cost_sensitivity | 44 | -0.0248 | -0.94 | -22.31% | 0.6837 | 0.8821 |
+| cost_2x | cost_sensitivity | 44 | -0.0248 | -1.22 | -27.32% | 0.6837 | 0.8821 |
+
+| Check | Required | Status | Observed | Threshold | Reason |
+| --- | --- | --- | ---: | --- | --- |
+| positive_holdout_sharpe | yes | fail | -0.9354 | 0.0000 | Holdout Sharpe -0.9354 must be greater than 0.0000. |
+| positive_holdout_ic | yes | fail | -0.0248 | 0.0000 | Holdout IC -0.0248 must be greater than 0.0000. |
+| fdr_significant | yes | fail | 0.8821 | 0.1000 | Agent FDR q-value 0.8821 must be at most 0.1000. |
+| positive_holdout_return | yes | fail | -0.2231 | 0.0000 | Holdout total return -0.2231 must be positive. |
+| beats_best_baseline | yes | fail | -0.9354 | 0.6780 | Agent holdout Sharpe -0.9354 must be at least best baseline 0.6780. |
+| walk_forward_stable | yes | pass | 0.6667 | >= 50% non-negative Sharpe windows | At least half of walk-forward windows must have non-negative Sharpe. |
+| data_ready | yes | fail | no | yes | Data must be point-in-time, survivorship-bias-free, and corporate-action adjusted. |
+
+Reasons preventing promotion:
+- Holdout Sharpe -0.9354 must be greater than 0.0000.
+- Holdout IC -0.0248 must be greater than 0.0000.
+- Agent FDR q-value 0.8821 must be at most 0.1000.
+- Holdout total return -0.2231 must be positive.
+- Agent holdout Sharpe -0.9354 must be at least best baseline 0.6780.
+- Data must be point-in-time, survivorship-bias-free, and corporate-action adjusted.
 
 ## Interpretation
 
-The signal is not supported out-of-sample in this run. Treat it as rejected until a more robust variant improves IC stability without increasing overfit risk.
+The research validity gate rejects promotion even though validation IC and Sharpe are positive. Use the failed holdout or FDR checks as the next iteration target.
 
-The strongest out-of-sample Sharpe is from `reversal_5d_only`, not the agent signal. Treat this as a useful rejection/iteration signal: inspect which factor exposure is carrying the result before adding model complexity.
+The agent signal has the strongest out-of-sample Sharpe among configured strategies. Its test IC is 0.0148, so the next validation target is stability across real data and walk-forward windows.
 
-The signal keeps positive test IC and Sharpe under these stress tests: sector_neutral_liquidity_top_80pct. Compare their drawdowns and turnover before treating this as robust.
+The signal keeps positive test IC and Sharpe under these stress tests: liquidity_top_80pct, sector_neutral_liquidity_top_80pct. Compare their drawdowns and turnover before treating this as robust.
 
 Factor diagnostics did not flag high pairwise redundancy among selected exposures.
 
-Robustness diagnostics flag caution: bootstrap Sharpe confidence is weak; bootstrap IC confidence is weak; parameter sensitivity is fragile; high-cost sensitivity erases positive Sharpe.
+Robustness diagnostics do not flag a major overfit warning under the configured bootstrap and sensitivity checks.
 
-Capacity diagnostics do not identify a configured notional that passes both participation and positive-Sharpe gates.
+Capacity diagnostics estimate that the signal passes configured gates up to 25,000,000 notional. Treat this as a research approximation because the model uses average dollar volume, not live order book depth.
 
 Walk-forward validation is not yet stable enough for promotion: inspect the weak windows before adding factor complexity.
 
-The train/test split is chronological. Test-period results are the primary evidence because they are less exposed to factor selection bias.
+The train/validation/holdout split is chronological. Validation-period results remain compatibility `test` metrics; holdout-period results drive the research validity gate.
 
 ## Limitations
 
@@ -230,11 +282,11 @@ The train/test split is chronological. Test-period results are the primary evide
 
 ## Run Reproducibility
 
-- Run ID: `yahoo-nasdaq-momentum-low-volatility-20260617T045621Z-da84cab038-f660f305`
-- Generated at: `2026-06-17T04:56:21Z`
-- Config SHA-256: `da84cab03886d0cc9e6e1c163f8df62172a6d742b7f581f27927aceb470bb2ac`
-- Git commit: `69b38c7dc11d716c7d2e4a6e608fd6d01d058996`
-- Git branch: `main`
+- Run ID: `yahoo-nasdaq-momentum-low-volatility-20260618T041314Z-29ccb5e174-5d916c9f`
+- Generated at: `2026-06-18T04:13:14Z`
+- Config SHA-256: `29ccb5e174e5f14d9e9f9a5977649de87202d59f28d4500d61dc784c1660e62a`
+- Git commit: `b6fdb3335b192e2346cc796fdca128c8e83668f3`
+- Git branch: `codex/us-026-research-validity`
 - Git dirty: yes
-- Manifest: `results/runs/yahoo-nasdaq-momentum-low-volatility-20260617T045621Z-da84cab038-f660f305/manifest.json`
-- Frozen config: `results/runs/yahoo-nasdaq-momentum-low-volatility-20260617T045621Z-da84cab038-f660f305/config.yaml`
+- Manifest: `results/runs/yahoo-nasdaq-momentum-low-volatility-20260618T041314Z-29ccb5e174-5d916c9f/manifest.json`
+- Frozen config: `results/runs/yahoo-nasdaq-momentum-low-volatility-20260618T041314Z-29ccb5e174-5d916c9f/config.yaml`

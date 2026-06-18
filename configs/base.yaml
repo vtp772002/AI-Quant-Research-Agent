@@ -72,6 +72,16 @@ experiment:
     walk_forward:
       window_count: 3
       min_train_fraction: 0.4
+    research_validity:
+      enabled: true
+      holdout_fraction: 0.15
+      fdr_alpha: 0.10
+      min_holdout_sharpe: 0.0
+      min_holdout_ic: 0.0
+      require_positive_return: true
+      require_baseline_outperformance: true
+      require_walk_forward_stability: true
+      require_data_readiness: true
   stress_tests:
     neutralization:
       enabled: true
