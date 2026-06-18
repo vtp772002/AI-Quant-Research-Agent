@@ -56,8 +56,8 @@ quant_research_agent.managed_registry
 quant_research_agent.research_job_queue / research_job_worker
   durable local batch job state, transactional leases, retry/dead-letter
   transitions, lifecycle events, one-shot worker execution, and bounded local
-  worker-loop supervision, lease renewal, heartbeat timestamps, and stale-job
-  diagnostics
+  worker-loop supervision, automatic lease renewal, heartbeat timestamps, and
+  stale-job diagnostics
 
 quant_research_agent.promotion_authorization
   two-person family-promotion recommendation, decision, frozen evidence,
@@ -190,7 +190,9 @@ role but do not implement promotion rules.
 Research jobs follow the same command/query split. Enqueue and worker
 transitions are commands owned by `research_job_queue`; list, show, and events
 are queries. The worker delegates execution to `operations.run_research_batch`
-and never updates queue rows directly.
+and never updates queue rows directly. Automatic worker renewal also delegates
+to the queue lease-renewal command so heartbeat updates and event redaction
+remain centralized.
 
 Promotion actor separation uses a collision-resistant SHA-256 API-key
 fingerprint distinct from the masked `api_key_id` used in operational logs.

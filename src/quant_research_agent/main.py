@@ -179,6 +179,11 @@ def main(argv: list[str] | None = None) -> int:
         help="Retry delay after a failed worker attempt.",
     )
     parser.add_argument(
+        "--worker-auto-renew-seconds",
+        type=float,
+        help="Automatically renew an active worker lease at this interval while a job is executing.",
+    )
+    parser.add_argument(
         "--worker-poll-seconds",
         type=float,
         default=5.0,
@@ -366,6 +371,7 @@ def main(argv: list[str] | None = None) -> int:
             worker_id=args.worker_id,
             lease_seconds=args.worker_lease_seconds,
             retry_delay_seconds=args.worker_retry_delay_seconds,
+            auto_renew_seconds=args.worker_auto_renew_seconds,
         )
         print(
             json.dumps(
@@ -383,6 +389,7 @@ def main(argv: list[str] | None = None) -> int:
             worker_id=args.worker_id,
             lease_seconds=args.worker_lease_seconds,
             retry_delay_seconds=args.worker_retry_delay_seconds,
+            auto_renew_seconds=args.worker_auto_renew_seconds,
             poll_seconds=args.worker_poll_seconds,
             max_jobs=args.worker_max_jobs,
             max_runtime_seconds=args.worker_max_runtime_seconds,

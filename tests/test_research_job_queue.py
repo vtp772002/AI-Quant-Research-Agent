@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from sqlite3 import connect
+from time import monotonic, sleep
 
 import json
 import pytest
@@ -687,6 +688,152 @@ def test_worker_reports_lease_lost_without_overwriting_recovered_job(tmp_path: P
     assert stored.attempts == 2
 
 
+def test_worker_auto_renews_lease_during_long_running_executor(tmp_path: Path):
+    from quant_research_agent.operations import BatchRunResult
+    from quant_research_agent.research_job_queue import (
+        enqueue_research_job,
+        research_job_event_to_dict,
+        research_job_events,
+    )
+    from quant_research_agent.research_job_worker import run_research_worker_once
+
+    queue_path = tmp_path / "research_jobs.sqlite"
+    job = enqueue_research_job(
+        queue_path,
+        config_paths=[Path("configs/base.yaml")],
+        output_dir=tmp_path / "batch",
+        idempotency_key="worker-auto-renew",
+        now=datetime.now(UTC),
+    )
+
+    def long_running_executor(**kwargs):
+        deadline = monotonic() + 2.0
+        while monotonic() < deadline:
+            if any(
+                event.event_type == "lease_renewed"
+                for event in research_job_events(queue_path, job.job_id)
+            ):
+                break
+            sleep(0.01)
+        assert any(
+            event.event_type == "lease_renewed"
+            for event in research_job_events(queue_path, job.job_id)
+        )
+        output_dir = kwargs["output_dir"]
+        return BatchRunResult(
+            status="completed",
+            runs=[],
+            failures=[],
+            summary_path=output_dir / "batch_summary.json",
+            comparison_markdown_path=None,
+            comparison_json_path=None,
+        )
+
+    result = run_research_worker_once(
+        queue_path,
+        worker_id="worker-a",
+        lease_seconds=60,
+        retry_delay_seconds=0,
+        auto_renew_seconds=0.01,
+        executor=long_running_executor,
+    )
+    event_payloads = [
+        research_job_event_to_dict(event)
+        for event in research_job_events(queue_path, job.job_id)
+    ]
+    rendered_events = json.dumps(event_payloads, sort_keys=True)
+
+    assert result.outcome == "completed"
+    assert result.job is not None
+    assert result.job.status == "completed"
+    assert result.lease_renewals >= 1
+    assert "lease_token" not in rendered_events
+
+
+def test_worker_auto_renewal_loss_does_not_overwrite_recovered_job(tmp_path: Path):
+    from quant_research_agent.operations import BatchRunResult
+    from quant_research_agent.research_job_queue import (
+        claim_research_job,
+        enqueue_research_job,
+        get_research_job,
+        renew_research_job_lease,
+    )
+    from quant_research_agent.research_job_worker import run_research_worker_once
+
+    queue_path = tmp_path / "research_jobs.sqlite"
+    job = enqueue_research_job(
+        queue_path,
+        config_paths=[Path("configs/base.yaml")],
+        output_dir=tmp_path / "batch",
+        idempotency_key="worker-auto-renew-lost",
+        max_attempts=3,
+        now=NOW,
+    )
+
+    def recovering_renewer(path: Path, **kwargs):
+        recovered = claim_research_job(
+            path,
+            worker_id="worker-b",
+            lease_seconds=30,
+            now=NOW + timedelta(seconds=2),
+        )
+        assert recovered is not None
+        return renew_research_job_lease(
+            path,
+            job_id=kwargs["job_id"],
+            lease_token=kwargs["lease_token"],
+            lease_seconds=kwargs["lease_seconds"],
+            now=NOW + timedelta(seconds=2),
+        )
+
+    def executor_that_finishes_after_recovery(**kwargs):
+        deadline = monotonic() + 2.0
+        while monotonic() < deadline:
+            stored = get_research_job(queue_path, job.job_id)
+            if stored is not None and stored.lease_owner == "worker-b":
+                break
+            sleep(0.01)
+        output_dir = kwargs["output_dir"]
+        return BatchRunResult(
+            status="completed",
+            runs=[],
+            failures=[],
+            summary_path=output_dir / "batch_summary.json",
+            comparison_markdown_path=None,
+            comparison_json_path=None,
+        )
+
+    result = run_research_worker_once(
+        queue_path,
+        worker_id="worker-a",
+        lease_seconds=1,
+        retry_delay_seconds=0,
+        auto_renew_seconds=0.01,
+        lease_renewer=recovering_renewer,
+        executor=executor_that_finishes_after_recovery,
+        now=NOW,
+    )
+    stored = get_research_job(queue_path, job.job_id)
+
+    assert result.outcome == "lease_lost"
+    assert result.lease_renewal_error is not None
+    assert stored is not None
+    assert stored.status == "running"
+    assert stored.lease_owner == "worker-b"
+    assert stored.attempts == 2
+
+
+def test_worker_rejects_non_positive_auto_renew_interval(tmp_path: Path):
+    from quant_research_agent.research_job_worker import run_research_worker_once
+
+    with pytest.raises(ValueError, match="auto_renew_seconds must be positive"):
+        run_research_worker_once(
+            tmp_path / "research_jobs.sqlite",
+            worker_id="worker-a",
+            auto_renew_seconds=0,
+        )
+
+
 def test_worker_loop_processes_jobs_until_idle_and_returns_summary(tmp_path: Path):
     from quant_research_agent.operations import BatchRunResult
     from quant_research_agent.research_job_queue import (
@@ -842,6 +989,8 @@ def test_research_job_cli_enqueue_list_worker_and_show(
             "cli-worker",
             "--worker-retry-delay-seconds",
             "0",
+            "--worker-auto-renew-seconds",
+            "0.01",
         ]
     )
     worker = json.loads(capsys.readouterr().out)
@@ -859,6 +1008,7 @@ def test_research_job_cli_enqueue_list_worker_and_show(
     assert enqueued["status"] == "queued"
     assert listed["jobs"][0]["job_id"] == enqueued["job_id"]
     assert worker["outcome"] == "completed"
+    assert "lease_renewals" in worker
     assert shown["status"] == "completed"
     assert Path(shown["result"]["summary_path"]).exists()
 

@@ -318,7 +318,10 @@ holders can renew a running job lease, which updates `lease_expires_at`,
 `last_heartbeat_at`, and a `lease_renewed` lifecycle event. Stale diagnostics
 report running jobs with expired leases, missing heartbeat data, or heartbeats
 older than the configured threshold. Lease tokens remain internal capabilities
-and are not written to event rows or public CLI/API payloads.
+and are not written to event rows or public CLI/API payloads. Local workers can
+also opt into automatic lease renewal during batch execution; renewal failures
+return `lease_lost` and prevent the stale worker from completing or failing a
+job recovered by another worker.
 
 Registry export writes newline-delimited JSON records, an export manifest, a
 reviewable Postgres upsert handoff SQL file, a governance manifest, and a
@@ -447,5 +450,5 @@ risk status. It does not compute forward returns or claim execution feasibility.
   immutable object storage, credentialed managed registry deployment,
   enterprise identity, tenant-scoped SaaS authorization, managed immutable
   promotion-ledger storage, managed HMAC key rotation, distributed provider
-  quota orchestration, distributed queue deployment, automatic background lease
-  renewal, or a full production execution simulator.
+  quota orchestration, distributed queue deployment, cooperative executor
+  cancellation on lease loss, or a full production execution simulator.

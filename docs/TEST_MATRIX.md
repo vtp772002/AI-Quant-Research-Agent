@@ -31,6 +31,7 @@ implemented until tests or validation evidence exist.
 | US-033 | Durable research job queue and lease-based worker | yes | yes | yes | yes | implemented | Queue/platform verification 29/29; full pytest 175/175; queue suite 13/13; compileall, pip check, diff check, real CLI enqueue/list/worker/show smoke, and Harness story verify passed |
 | US-034 | Managed local research worker supervision | yes | yes | yes | yes | implemented | Worker queue suite 16/16; queue/platform verification 32/32; full pytest 178/178; compileall, pip check, diff check, real CLI enqueue/worker-loop smoke, daily script enqueue/worker smoke, Harness story verify, and decision verify passed |
 | US-035 | Lease renewal and worker heartbeat diagnostics | yes | yes | yes | yes | implemented | Queue suite 20/20; queue/platform verification 37/37; full pytest 183/183; compileall, pip check, diff check, real CLI renew/stale smoke, Harness story verify, and decision verify passed |
+| US-036 | Automatic worker lease renewal during long-running batch execution | yes | yes | yes | yes | implemented | Queue suite 23/23; queue/platform verification 40/40; full pytest 186/186; compileall, pip check, diff check, real CLI auto-renew smoke, Harness story verify, and decision verify passed |
 
 ## Evidence Rules
 
