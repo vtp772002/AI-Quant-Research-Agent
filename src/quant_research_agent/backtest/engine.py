@@ -28,6 +28,8 @@ class BacktestResult:
     costs: pd.DataFrame
     metrics: dict[str, dict[str, float]]
     split_date: pd.Timestamp
+    validation_start: pd.Timestamp
+    holdout_start: pd.Timestamp | None
     walk_forward: list[WalkForwardWindow]
 
 
@@ -48,6 +50,7 @@ def run_long_short_backtest(
     borrow_fee_bps_by_date: pd.DataFrame | None = None,
     walk_forward_windows: int = 0,
     walk_forward_min_train_fraction: float = 0.4,
+    holdout_fraction: float = 0.0,
 ) -> BacktestResult:
     close = market_data["adj_close"].unstack("symbol")
     forward_returns = close.shift(-holding_period) / close - 1.0
@@ -80,22 +83,46 @@ def run_long_short_backtest(
     returns = (raw_returns - costs["total_cost"]).rename("strategy_return").dropna()
 
     ic_by_date = _information_coefficient(aligned)
-    split_date = _split_date(returns.index, train_fraction)
+    split_date, validation_start, holdout_start = _split_boundaries(
+        returns.index,
+        train_fraction=train_fraction,
+        holdout_fraction=holdout_fraction,
+    )
+    train_metrics = _metric_summary(
+        returns=returns.loc[returns.index <= split_date],
+        ic_by_date=ic_by_date.loc[ic_by_date.index <= split_date],
+        turnover=turnover.loc[turnover.index <= split_date],
+        costs=costs.loc[costs.index <= split_date],
+        holding_period=holding_period,
+    )
+    validation_mask = returns.index >= validation_start
+    if holdout_start is not None:
+        validation_mask &= returns.index < holdout_start
+    validation_returns = returns.loc[validation_mask]
+    validation_metrics = _metric_summary(
+        returns=validation_returns,
+        ic_by_date=ic_by_date.reindex(validation_returns.index),
+        turnover=turnover.reindex(validation_returns.index),
+        costs=costs.reindex(validation_returns.index),
+        holding_period=holding_period,
+    )
+    holdout_returns = (
+        returns.loc[returns.index >= holdout_start]
+        if holdout_start is not None
+        else returns.iloc[0:0]
+    )
+    holdout_metrics = _metric_summary(
+        returns=holdout_returns,
+        ic_by_date=ic_by_date.reindex(holdout_returns.index),
+        turnover=turnover.reindex(holdout_returns.index),
+        costs=costs.reindex(holdout_returns.index),
+        holding_period=holding_period,
+    )
     metrics = {
-        "train": _metric_summary(
-            returns=returns.loc[returns.index <= split_date],
-            ic_by_date=ic_by_date.loc[ic_by_date.index <= split_date],
-            turnover=turnover.loc[turnover.index <= split_date],
-            costs=costs.loc[costs.index <= split_date],
-            holding_period=holding_period,
-        ),
-        "test": _metric_summary(
-            returns=returns.loc[returns.index > split_date],
-            ic_by_date=ic_by_date.loc[ic_by_date.index > split_date],
-            turnover=turnover.loc[turnover.index > split_date],
-            costs=costs.loc[costs.index > split_date],
-            holding_period=holding_period,
-        ),
+        "train": train_metrics,
+        "validation": validation_metrics,
+        "test": validation_metrics.copy(),
+        "holdout": holdout_metrics,
         "full": _metric_summary(
             returns=returns,
             ic_by_date=ic_by_date,
@@ -104,8 +131,13 @@ def run_long_short_backtest(
             holding_period=holding_period,
         ),
     }
+    pre_holdout_returns = (
+        returns.loc[returns.index < holdout_start]
+        if holdout_start is not None
+        else returns
+    )
     walk_forward = _walk_forward_metrics(
-        returns=returns,
+        returns=pre_holdout_returns,
         ic_by_date=ic_by_date,
         turnover=turnover,
         costs=costs,
@@ -123,6 +155,8 @@ def run_long_short_backtest(
         costs=costs,
         metrics=metrics,
         split_date=split_date,
+        validation_start=validation_start,
+        holdout_start=holdout_start,
         walk_forward=walk_forward,
     )
 
@@ -246,6 +280,38 @@ def _split_date(index: pd.Index, train_fraction: float) -> pd.Timestamp:
         raise ValueError("not enough backtest observations for train/test split")
     split_position = min(max(int(len(index) * train_fraction), 1), len(index) - 2)
     return pd.Timestamp(index[split_position])
+
+
+def _split_boundaries(
+    index: pd.Index,
+    train_fraction: float,
+    holdout_fraction: float,
+) -> tuple[pd.Timestamp, pd.Timestamp, pd.Timestamp | None]:
+    if holdout_fraction <= 0.0:
+        split_date = _split_date(index, train_fraction)
+        validation_index = index[index > split_date]
+        return split_date, pd.Timestamp(validation_index[0]), None
+
+    holdout_size = max(1, int(np.ceil(len(index) * holdout_fraction)))
+    holdout_position = len(index) - holdout_size
+    max_train_position = holdout_position - 2
+    if max_train_position < 0:
+        raise ValueError(
+            "not enough backtest observations for train, validation, and holdout"
+        )
+
+    train_position = min(max(int(len(index) * train_fraction), 0), max_train_position)
+    validation_position = train_position + 1
+    if validation_position >= holdout_position:
+        raise ValueError(
+            "not enough backtest observations for train, validation, and holdout"
+        )
+
+    return (
+        pd.Timestamp(index[train_position]),
+        pd.Timestamp(index[validation_position]),
+        pd.Timestamp(index[holdout_position]),
+    )
 
 
 def _walk_forward_metrics(

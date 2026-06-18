@@ -94,6 +94,11 @@ def run_research_workflow(config: AppConfig) -> ResearchRunResult:
         rebalance_days=config.experiment.backtest.rebalance_days,
         quantile=config.experiment.backtest.quantile,
         transaction_cost_bps=config.experiment.backtest.transaction_cost_bps,
+        holdout_fraction=(
+            config.experiment.validation.research_validity.holdout_fraction
+            if config.experiment.validation.research_validity.enabled
+            else 0.0
+        ),
         spread_cost_bps=config.experiment.backtest.spread_cost_bps,
         market_impact_coefficient=config.experiment.backtest.market_impact_coefficient,
         portfolio_notional=config.experiment.backtest.portfolio_notional,

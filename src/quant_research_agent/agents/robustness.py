@@ -69,17 +69,20 @@ def _bootstrap_summary(backtest: BacktestResult, config: AppConfig) -> Bootstrap
     if iterations <= 0:
         return None
 
-    test_returns = backtest.returns.loc[backtest.returns.index > backtest.split_date].dropna()
-    test_ic = backtest.ic_by_date.loc[backtest.ic_by_date.index > backtest.split_date].dropna()
-    if len(test_returns) < 2 or len(test_ic) < 2:
+    validation_mask = backtest.returns.index >= backtest.validation_start
+    if backtest.holdout_start is not None:
+        validation_mask &= backtest.returns.index < backtest.holdout_start
+    validation_returns = backtest.returns.loc[validation_mask].dropna()
+    validation_ic = backtest.ic_by_date.reindex(validation_returns.index).dropna()
+    if len(validation_returns) < 2 or len(validation_ic) < 2:
         return None
 
     rng = np.random.default_rng(config.experiment.robustness.bootstrap_seed)
     periods_per_year = 252.0 / max(config.experiment.backtest.holding_period, 1)
     sharpe_values = []
     ic_values = []
-    returns_array = test_returns.to_numpy()
-    ic_array = test_ic.to_numpy()
+    returns_array = validation_returns.to_numpy()
+    ic_array = validation_ic.to_numpy()
     for _ in range(iterations):
         sampled_returns = rng.choice(returns_array, size=len(returns_array), replace=True)
         sampled_ic = rng.choice(ic_array, size=len(ic_array), replace=True)
@@ -187,6 +190,11 @@ def _run_variant(
         rebalance_days=config.experiment.backtest.rebalance_days,
         quantile=quantile,
         transaction_cost_bps=config.experiment.backtest.transaction_cost_bps * cost_multiplier,
+        holdout_fraction=(
+            config.experiment.validation.research_validity.holdout_fraction
+            if config.experiment.validation.research_validity.enabled
+            else 0.0
+        ),
         spread_cost_bps=config.experiment.backtest.spread_cost_bps * cost_multiplier,
         market_impact_coefficient=config.experiment.backtest.market_impact_coefficient * cost_multiplier,
         portfolio_notional=config.experiment.backtest.portfolio_notional,
