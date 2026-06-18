@@ -21,6 +21,7 @@ implemented until tests or validation evidence exist.
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | US-001 | Core AI quant research workflow | yes | yes | no | yes | implemented | `.venv/bin/python -m pytest`; `.venv/bin/python -m quant_research_agent.main --config configs/base.yaml --json` |
 | US-002 | Real-data config and baseline comparison | yes | yes | no | yes | implemented | `.venv/bin/python -m pytest`; CLI smoke for `configs/base.yaml` and `configs/yahoo_nasdaq_demo.yaml` |
+| US-026 | Research validity and promotion gate | yes | yes | yes | yes | implemented | `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest tests/test_research_validity.py tests/test_workflow.py -q`; `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest -q`; `.venv/bin/python -m compileall -q src tests`; `.venv/bin/python -m pip check`; CLI smokes for base, point-in-time synthetic, institutional snapshot, and Yahoo demo configs |
 
 ## Evidence Rules
 

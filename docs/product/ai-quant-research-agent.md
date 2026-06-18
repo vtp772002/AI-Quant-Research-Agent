@@ -53,7 +53,7 @@ ledger.
 4. Compute a reusable factor library.
 5. Convert selected factors into a cross-sectional signal.
 6. Diagnose selected factor coverage and pairwise redundancy.
-7. Run a long-short backtest with chronological train/test split.
+7. Run a long-short backtest with chronological train/validation/holdout split.
 8. Compare the agent signal against configured baseline strategies.
 9. Validate signal stability over configured walk-forward windows.
 10. Stress-test the agent signal with configured neutralization and liquidity
@@ -68,34 +68,36 @@ ledger.
    notionals.
 15. Calculate IC, Sharpe ratio, max drawdown, turnover, costs, borrow drag, and
    total return.
-16. Write a Markdown research report, append experiment metrics, and emit a
+16. Evaluate the advisory Research Validity Gate over holdout, FDR, economic,
+    baseline, stability, and data-readiness checks.
+17. Write a Markdown research report, append experiment metrics, and emit a
     reproducibility pack manifest for the run.
-17. Persist key run metadata and metrics into a queryable local SQLite
+18. Persist key run metadata and metrics into a queryable local SQLite
     experiment registry.
-18. Generate as-of signal snapshots for a requested date using only data
+19. Generate as-of signal snapshots for a requested date using only data
     available on or before that date.
-19. Compare reproducibility manifests across prior runs and rank them by a
+20. Compare reproducibility manifests across prior runs and rank them by a
     selected test-period metric.
-20. Run scheduled-style research batches over one or more configs and publish
+21. Run scheduled-style research batches over one or more configs and publish
     batch summaries plus comparison artifacts.
-21. Export the local registry as offline object-store/Postgres handoff artifacts.
-22. Load vendor snapshot drops through the validated OHLCV snapshot boundary.
-23. Extract draft alpha experiment templates from paper or blog text.
-24. Simulate as-of execution plans without routing orders or contacting brokers.
-25. Generate validated research idea configs from prior run memory, critique
+22. Export the local registry as offline object-store/Postgres handoff artifacts.
+23. Load vendor snapshot drops through the validated OHLCV snapshot boundary.
+24. Extract draft alpha experiment templates from paper or blog text.
+25. Simulate as-of execution plans without routing orders or contacting brokers.
+26. Generate validated research idea configs from prior run memory, critique
     existing runs, and orchestrate iterative alpha-mining batches.
-26. Run idea generation through a governed provider boundary with deterministic,
+27. Run idea generation through a governed provider boundary with deterministic,
     fixture, or explicitly allowed command providers and transcript artifacts.
-27. Gate generated idea execution behind a human review queue with draft,
+28. Gate generated idea execution behind a human review queue with draft,
     approved, rejected, ran, and archived statuses.
-28. Persist an append-only review audit ledger for generated idea creation,
+29. Persist an append-only review audit ledger for generated idea creation,
     status changes, and run marking.
-29. Protect non-health internal API routes with API keys and role-scoped access.
-30. Emit API request logs with sanitized authenticated actor and authorization
+30. Protect non-health internal API routes with API keys and role-scoped access.
+31. Emit API request logs with sanitized authenticated actor and authorization
     result context.
-31. Expose review queue summary, audit, status-update, and run-approved
+32. Expose review queue summary, audit, status-update, and run-approved
     operations through the role-scoped internal API.
-32. Generate research ideas through an opt-in live OpenAI provider while
+33. Generate research ideas through an opt-in live OpenAI provider while
     preserving credential guards, transcripts, validation, and review gating.
 
 ## Data Contract
@@ -156,9 +158,34 @@ Signals are cross-sectional: each factor is ranked across the active universe
 on the rebalance date. The portfolio is dollar-neutral, long the top quantile
 and short the bottom quantile, rebalanced at a configured interval.
 
-Baseline strategies use the same data, train/test split, rebalance interval,
-portfolio construction, and transaction cost assumptions as the agent signal.
-This keeps comparison focused on signal quality rather than backtest settings.
+Baseline strategies use the same data, train/validation/holdout split,
+rebalance interval, portfolio construction, and transaction cost assumptions as
+the agent signal. This keeps comparison focused on signal quality rather than
+backtest settings.
+
+When configured, the Research Validity Gate reserves the final chronological
+tail as an untouched holdout. Validation-period metrics remain available
+through the existing `test` compatibility alias, but holdout-period metrics
+drive promotion evidence. The holdout boundary is also enforced in validation
+diagnostics so forward-return observations whose realization date crosses into
+holdout are excluded from validation evidence.
+
+The validity gate evaluates a within-run candidate family containing the agent
+signal, configured baselines, enabled stress tests, parameter-sensitivity
+variants, and cost-sensitivity variants. It computes one-sided positive
+holdout-IC p-values and applies Benjamini-Hochberg FDR correction across that
+family. The report emits `PROMOTE`, `REVIEW`, or `REJECT`:
+
+- `PROMOTE`: all required holdout, FDR, economic, baseline, stability, and
+  data-readiness checks pass.
+- `REVIEW`: core holdout evidence passes, but comparative, stability, or data
+  readiness needs human review.
+- `REJECT`: core holdout Sharpe, IC, FDR, or return evidence fails.
+
+The verdict is advisory. It never changes process exit status and it is not an
+investment, trading, or compliance approval. Within-run Benjamini-Hochberg
+correction does not control false discoveries across unrecorded manual
+experiments or separate historical runs.
 
 When configured, walk-forward validation divides the backtest results into
 multiple chronological test windows after an initial expanding training period.
@@ -212,15 +239,15 @@ Every CLI run writes a reproducibility pack under `results/runs/<run_id>/`.
 The pack includes a frozen config copy and `manifest.json` with run id,
 generation timestamp, config SHA-256, git commit/branch/dirty flag, data
 fingerprints, locate-history hash when configured, report hash, experiment CSV
-hash, and primary metrics. The Markdown report includes a `Run
+hash, primary metrics, and research-validity evidence. The Markdown report includes a `Run
 Reproducibility` section that points to the manifest and frozen config.
 
 Every CLI run also writes a queryable registry row to
 `results/experiments.sqlite` by default. The registry stores run id, experiment
 name, generated timestamp, config hash, source metadata, code metadata,
-artifact paths, and key train/test metrics. It is the Level 1 local system of
-record for internal research runs; a Postgres-backed registry is a later
-deployment story.
+artifact paths, key train/validation/holdout metrics, and research-validity
+summary fields. It is the Level 1 local system of record for internal research
+runs; a Postgres-backed registry is a later deployment story.
 
 Run comparison reads one manifest file or the `manifest.json` files under a
 run-bundle directory such as `results/runs/`. It ranks runs by a selected
@@ -305,8 +332,9 @@ risk status. It does not compute forward returns or claim execution feasibility.
   data.
 - Data integrity diagnostics identify readiness gaps but do not create
   survivorship-safe data by themselves.
-- Walk-forward validation tests temporal stability but does not remove the need
-  for better data controls and independent hypothesis review.
+- Walk-forward validation and the Research Validity Gate test temporal
+  stability and holdout evidence, but they do not remove the need for better
+  data controls and independent hypothesis review.
 - v1 includes liquidity-sensitive transaction costs, borrow fees, shortability
   constraints, robustness diagnostics, and a CSV point-in-time universe adapter,
   plus capacity diagnostics and validated CSV snapshot and locate-history
@@ -315,9 +343,11 @@ risk status. It does not compute forward returns or claim execution feasibility.
   snapshot ingestion, paper-to-alpha template extraction, LLM-facing research
   idea generation, governed provider transcripts, an opt-in live OpenAI adapter,
   run critique, research memory, iterative alpha mining, an internal API, as-of
-  signal snapshots, and broker-free execution simulation, but these remain
-  research approximations and do not replace broker execution data, direct
-  securities-lending feeds, direct vendor market data APIs, venue routing
-  analysis, independent alpha review, multiple-hypothesis controls, immutable
-  object storage, multi-user SaaS authorization, provider-specific LLM evals and
+  signal snapshots, broker-free execution simulation, and an advisory
+  research-validity gate with within-run Benjamini-Hochberg FDR correction, but
+  these remain research approximations and do not replace broker execution
+  data, direct securities-lending feeds, direct vendor market data APIs, venue
+  routing analysis, independent alpha review, cross-run experiment-family
+  controls, separately locked institutional holdout datasets, immutable object
+  storage, multi-user SaaS authorization, provider-specific LLM evals and
   rate-limit orchestration, or a full production execution simulator.

@@ -20,7 +20,7 @@ statistical evidence a quant researcher needs to judge a signal?
   reversal, volatility, volume, and liquidity factors.
 - `agents`: create a hypothesis, translate selected factors into a ranked
   signal, compare it with baselines, evaluate the experiment, and write a
-  report.
+  report with advisory research-validity evidence.
 - `backtest`: run a dollar-neutral top/bottom quantile long-short portfolio.
 - `api`: expose an internal FastAPI service for health checks, run execution,
   run lookup, report lookup, and as-of signal generation.
@@ -195,8 +195,13 @@ The research report includes:
 - Max drawdown.
 - Average turnover.
 - Total long-short return.
-- Chronological train/test split.
-- Baseline comparison on test-period metrics.
+- Chronological train/validation/holdout split, with `test` retained as the
+  validation-period compatibility alias.
+- Baseline comparison on validation-period metrics.
+- Research Validity Gate verdict (`PROMOTE`, `REVIEW`, or `REJECT`) based on
+  holdout Sharpe, holdout IC, holdout return, baseline comparison,
+  walk-forward stability, data readiness, and Benjamini-Hochberg FDR-adjusted
+  holdout IC significance.
 - Walk-forward validation across multiple chronological windows.
 - Factor coverage and redundancy diagnostics for selected exposures.
 - Neutralization and liquidity stress tests for the agent signal.
@@ -249,6 +254,8 @@ The research report includes:
   auth results.
 - Review queue summary, audit, status-update, and run-approved endpoints behind
   the internal API role boundary.
+- Validity verdict and holdout/FDR evidence in reports, CLI JSON,
+  reproducibility manifests, registry metrics, and experiment CSV rows.
 
 ## Validation
 
@@ -269,10 +276,12 @@ python -m quant_research_agent.api
   registry, scheduled batch orchestration, registry export handoff, vendor
   snapshot ingestion, paper-to-alpha template extraction, LLM-facing research
   agent contracts, an opt-in live LLM adapter, an internal API, as-of signal
-  generation, and broker-free execution simulation, plus human review gating
-  and review queue API endpoints for generated ideas, but no
-  live vendor API integration, broker-grade locate entitlement feed, paper/live
-  broker execution, order management, or compliance workflow.
+  generation, broker-free execution simulation, human review gating, review
+  queue API endpoints for generated ideas, and an advisory research-validity
+  gate with within-run FDR correction, but no live vendor API integration,
+  broker-grade locate entitlement feed, paper/live broker execution, order
+  management, compliance workflow, separately locked holdout dataset, or
+  cross-run experiment-family controls.
 
 ## Production Readiness Path
 
@@ -295,6 +304,8 @@ Implemented Level 1 foundations:
 - Research idea generation, critique, memory, paper-to-alpha v2, and alpha-mining
   orchestration with deterministic fallback, an opt-in live OpenAI provider,
   and human approval before generated idea configs run.
+- Advisory research-validity promotion gate with chronological holdout,
+  Benjamini-Hochberg FDR correction, named checks, and artifact evidence.
 
 Deferred until separate stories:
 
@@ -303,6 +314,8 @@ Deferred until separate stories:
 - Multi-user SaaS controls beyond API-key roles.
 - Live commercial data vendor API integration with credentials and rate-limit handling.
 - Paper trading, broker integration, hard risk gates, reconciliation, and kill switch controls.
+- Cross-run experiment-family controls over the registry and separately locked
+  institutional holdout datasets.
 
 ## Next Steps
 
@@ -311,5 +324,7 @@ Deferred until separate stories:
 - Promote registry export handoff into managed Postgres/object-storage deployment.
 - Add direct vendor API and securities-lending integrations after credential,
   entitlement, and provenance contracts are specified.
+- Add cross-run experiment-family controls once registry governance defines the
+  family of candidate runs being compared.
 - Add paper-trading stories only after risk gates, reconciliation, and kill-switch
   requirements are documented.
