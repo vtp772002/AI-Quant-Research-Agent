@@ -53,6 +53,11 @@ quant_research_agent.managed_registry
   deterministic local dry-run adapter for Postgres/object-lock registry
   deployment bundles
 
+quant_research_agent.promotion_authorization
+  two-person family-promotion recommendation, decision, frozen evidence,
+  serialized append, HMAC-authenticated hash-chain verification, and summary
+  queries
+
 quant_research_agent.paper_alpha / execution_simulator
   research-template extraction and broker-free execution feasibility modeling
 
@@ -170,6 +175,16 @@ the code level even when the storage layer is simple:
 The review queue API follows this split: summary and audit endpoints are
 queries, while status updates and approved-idea runs are commands that delegate
 state changes to `idea_review` and batch execution to `operations`.
+
+Family promotion follows the same separation. Listing and verification are
+queries. Recommendation and decision are commands that delegate to
+`promotion_authorization`; controllers supply authenticated actor identity and
+role but do not implement promotion rules.
+
+Promotion actor separation uses a collision-resistant SHA-256 API-key
+fingerprint distinct from the masked `api_key_id` used in operational logs.
+Ledger HMAC keys come from `AIQRA_PROMOTION_LEDGER_HMAC_KEY` and must never be
+written to logs or artifacts.
 
 Live LLM provider calls stay at the provider boundary. `research_agents` consumes
 validated idea payloads, not raw provider responses or credentials.

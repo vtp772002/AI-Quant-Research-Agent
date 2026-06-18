@@ -26,6 +26,13 @@ from quant_research_agent.idea_review import (
     update_idea_status,
 )
 from quant_research_agent.operations import batch_result_to_dict, run_research_batch
+from quant_research_agent.promotion_authorization import (
+    decide_family_promotion,
+    list_family_promotions,
+    promotion_ledger_verification_to_dict,
+    recommend_family_promotion,
+    verify_promotion_ledger,
+)
 from quant_research_agent.signals import generate_signal_as_of, signal_result_to_dict
 from quant_research_agent.workflow import run_configured_workflow
 
@@ -50,6 +57,22 @@ class RunApprovedIdeasRequest(BaseModel):
     batch_output_dir: str = "results/idea_batches"
     comparison_metric: str = "sharpe"
     limit: int | None = None
+
+
+class RecommendFamilyPromotionRequest(BaseModel):
+    source_path: str
+    family_id: str
+    run_id: str
+    ledger_path: str = "results/promotions/promotion_ledger.jsonl"
+    note: str = ""
+    fdr_alpha: float = 0.10
+
+
+class DecideFamilyPromotionRequest(BaseModel):
+    ledger_path: str = "results/promotions/promotion_ledger.jsonl"
+    recommendation_id: str
+    decision: str
+    note: str = ""
 
 
 def create_app() -> FastAPI:
@@ -188,6 +211,70 @@ def create_app() -> FastAPI:
             mark_configs_ran(Path(request.review_queue), config_paths, actor=f"api:{principal.api_key_id}")
         return batch_result_to_dict(result)
 
+    @app.get("/promotions")
+    def family_promotions(
+        family_ledger: str,
+        principal: ApiPrincipal = Depends(require_role("viewer")),
+    ) -> dict[str, object]:
+        _ = principal
+        return _promotion_payload(
+            lambda: list_family_promotions(
+                Path(family_ledger),
+                signing_key=_promotion_signing_key(),
+            )
+        )
+
+    @app.post("/promotions/recommend")
+    def recommend_promotion(
+        request: RecommendFamilyPromotionRequest,
+        principal: ApiPrincipal = Depends(require_role("researcher")),
+    ) -> dict[str, object]:
+        return _promotion_payload(
+            lambda: recommend_family_promotion(
+                source_path=Path(request.source_path),
+                family_id=request.family_id,
+                run_id=request.run_id,
+                ledger_path=Path(request.ledger_path),
+                actor=f"api:{principal.actor_id}",
+                role=principal.role,
+                signing_key=_promotion_signing_key(),
+                note=request.note,
+                fdr_alpha=request.fdr_alpha,
+            )
+        )
+
+    @app.post("/promotions/decide")
+    def decide_promotion(
+        request: DecideFamilyPromotionRequest,
+        principal: ApiPrincipal = Depends(require_role("operator")),
+    ) -> dict[str, object]:
+        return _promotion_payload(
+            lambda: decide_family_promotion(
+                ledger_path=Path(request.ledger_path),
+                recommendation_id=request.recommendation_id,
+                decision=request.decision,
+                actor=f"api:{principal.actor_id}",
+                role=principal.role,
+                signing_key=_promotion_signing_key(),
+                note=request.note,
+            )
+        )
+
+    @app.get("/promotions/verify")
+    def verify_promotions(
+        family_ledger: str,
+        principal: ApiPrincipal = Depends(require_role("viewer")),
+    ) -> dict[str, object]:
+        _ = principal
+        return _promotion_payload(
+            lambda: promotion_ledger_verification_to_dict(
+                verify_promotion_ledger(
+                    Path(family_ledger),
+                    signing_key=_promotion_signing_key(),
+                )
+            )
+        )
+
     return app
 
 
@@ -207,6 +294,29 @@ def _review_payload(loader):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def _promotion_payload(loader):
+    try:
+        return loader()
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="family promotion artifact not found") from exc
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def _promotion_signing_key() -> str:
+    signing_key = os.getenv("AIQRA_PROMOTION_LEDGER_HMAC_KEY", "")
+    if len(signing_key) < 16:
+        raise HTTPException(
+            status_code=503,
+            detail="family promotion ledger signing is not configured",
+        )
+    return signing_key
 
 
 def _request_log_payload(request: Request, request_id: str, duration_ms: float, status_code: int) -> dict[str, object]:

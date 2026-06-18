@@ -69,6 +69,12 @@ Researcher keys can update review state and run approved configs through:
 - `POST /reviews/ideas/status`
 - `POST /reviews/approved/run`
 
+Family-promotion API operations use the same role boundary:
+
+- `GET /promotions` and `GET /promotions/verify` require viewer.
+- `POST /promotions/recommend` requires researcher.
+- `POST /promotions/decide` requires operator.
+
 Compare generated runs:
 
 ```bash
@@ -77,6 +83,25 @@ python -m quant_research_agent.main --compare-runs results/runs --json --output 
 python -m quant_research_agent.main --compare-family results/runs --family-id synthetic-momentum-low-volatility-v1
 python -m quant_research_agent.main --compare-family results/runs --json --output results/family_comparison.json
 ```
+
+Authorize a family promotion with two distinct actors:
+
+```bash
+export AIQRA_PROMOTION_LEDGER_HMAC_KEY="<at-least-16-character-local-secret>"
+python -m quant_research_agent.main --recommend-family-promotion results/runs --promotion-family-id synthetic-momentum-low-volatility-v1 --promotion-run-id <run_id> --promotion-actor researcher-alice --promotion-role researcher
+python -m quant_research_agent.main --list-family-promotions results/promotions/promotion_ledger.jsonl
+python -m quant_research_agent.main --decide-family-promotion <recommendation_id> --promotion-decision approved --promotion-actor operator-bob --promotion-role operator
+python -m quant_research_agent.main --verify-promotion-ledger results/promotions/promotion_ledger.jsonl
+```
+
+Recommendation recomputes family evidence and accepts only the requested
+`FAMILY_PROMOTE` row. The comparison JSON is frozen beside the ledger and bound
+to a hash-chained recommendation event. Approval or rejection requires an
+operator actor different from the researcher actor. This authorizes progression
+to the next research stage; it does not authorize trading. Each event also
+carries an HMAC-SHA256 authenticated with
+`AIQRA_PROMOTION_LEDGER_HMAC_KEY`; the key is required but never written to the
+ledger. Mutations serialize the complete read-check-append transaction.
 
 Run a scheduled-style research batch and publish comparison artifacts:
 
@@ -285,6 +310,9 @@ The research report includes:
   symbol, or row-count mismatch before promotion evidence is accepted.
 - Experiment-family metadata in configs, manifests, and registry rows, plus
   CLI family comparison artifacts.
+- Two-person family-promotion authorization with researcher recommendation,
+  distinct operator decision, frozen comparison evidence, and a verifiable
+  append-only hash-chain ledger.
 
 ## Validation
 
@@ -313,7 +341,8 @@ python -m quant_research_agent.api
   vendor API integration,
   broker-grade locate entitlement feed, paper/live broker execution, order
   management, compliance workflow, live managed Postgres/object-lock registry
-  mutation, or multi-user family authorization.
+  mutation, enterprise identity, tenant-scoped authorization, or managed
+  immutable promotion-ledger storage.
 
 ## Production Readiness Path
 
@@ -346,13 +375,15 @@ Implemented Level 1 foundations:
   family-level FDR correction, registry fields, and Markdown/JSON artifacts.
 - Locked institutional holdout manifests with fail-closed local validation and
   report/manifest/registry evidence.
+- Two-person family-promotion authorization through CLI and role-scoped API
+  operations, with frozen evidence and tamper verification.
 
 Deferred until separate stories:
 
 - Credentialed managed Postgres/object-lock provider deployment with applied
   migrations and enforced retention policy.
 - Queue-backed scheduler/worker orchestration beyond the provided daily-run script.
-- Multi-user SaaS controls beyond API-key roles.
+- Multi-user SaaS controls beyond local API-key roles and two-person promotion.
 - Live commercial data vendor API integration with credentials and rate-limit handling.
 - Paper trading, broker integration, hard risk gates, reconciliation, and kill switch controls.
 - Managed holdout storage and access-control enforcement beyond local manifests.
@@ -367,5 +398,7 @@ Deferred until separate stories:
   entitlement, and provenance contracts are specified.
 - Add retention enforcement after managed storage ownership and credentials are
   specified.
+- Move family-promotion ledgers into managed immutable storage after ownership,
+  secrets, and identity contracts are specified.
 - Add paper-trading stories only after risk gates, reconciliation, and kill-switch
   requirements are documented.

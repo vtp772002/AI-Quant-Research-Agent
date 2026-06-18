@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 
 from quant_research_agent.execution_simulator import (
@@ -28,6 +29,13 @@ from quant_research_agent.managed_registry import (
 )
 from quant_research_agent.operations import batch_result_to_dict, run_research_batch
 from quant_research_agent.paper_alpha import template_to_config, write_alpha_template
+from quant_research_agent.promotion_authorization import (
+    decide_family_promotion,
+    list_family_promotions,
+    promotion_ledger_verification_to_dict,
+    recommend_family_promotion,
+    verify_promotion_ledger,
+)
 from quant_research_agent.registry_export import (
     export_registry_snapshot,
     registry_export_to_dict,
@@ -108,6 +116,27 @@ def main(argv: list[str] | None = None) -> int:
         help="Record legal hold=false in local object-lock inventory.",
     )
     parser.add_argument("--verify-managed-registry", help="Verify a local dry-run managed registry deployment bundle.")
+    parser.add_argument(
+        "--recommend-family-promotion",
+        help="Recommend one FAMILY_PROMOTE run from a manifest directory or manifest path.",
+    )
+    parser.add_argument(
+        "--decide-family-promotion",
+        help="Approve or reject one family promotion recommendation id.",
+    )
+    parser.add_argument("--list-family-promotions", help="List family promotion records from a ledger path.")
+    parser.add_argument("--verify-promotion-ledger", help="Verify a family promotion ledger and frozen evidence.")
+    parser.add_argument(
+        "--promotion-ledger",
+        default="results/promotions/promotion_ledger.jsonl",
+        help="Family promotion ledger path for recommendation and decision commands.",
+    )
+    parser.add_argument("--promotion-family-id", help="Family id for a promotion recommendation.")
+    parser.add_argument("--promotion-run-id", help="Run id for a promotion recommendation.")
+    parser.add_argument("--promotion-decision", choices=["approved", "rejected"], help="Operator decision.")
+    parser.add_argument("--promotion-actor", help="Explicit actor id recorded in the promotion ledger.")
+    parser.add_argument("--promotion-role", choices=["researcher", "operator"], help="Actor role for a promotion mutation.")
+    parser.add_argument("--promotion-note", default="", help="Recommendation or decision note.")
     parser.add_argument("--paper-to-alpha", help="Extract a draft alpha experiment template from a paper/blog text file.")
     parser.add_argument("--template-output", help="Output YAML path for --paper-to-alpha.")
     parser.add_argument("--simulate-execution", action="store_true", help="Simulate an as-of execution plan without placing trades.")
@@ -153,6 +182,73 @@ def main(argv: list[str] | None = None) -> int:
         output_cost_per_1k_tokens_usd=args.llm_output_cost_per_1k,
         expected_output_tokens=args.llm_expected_output_tokens,
     )
+
+    if args.recommend_family_promotion:
+        if not args.promotion_family_id or not args.promotion_run_id:
+            raise SystemExit(
+                "--recommend-family-promotion requires --promotion-family-id and --promotion-run-id"
+            )
+        if not args.promotion_actor or not args.promotion_role:
+            raise SystemExit(
+                "--recommend-family-promotion requires --promotion-actor and --promotion-role"
+            )
+        event = recommend_family_promotion(
+            source_path=Path(args.recommend_family_promotion),
+            family_id=args.promotion_family_id,
+            run_id=args.promotion_run_id,
+            ledger_path=Path(args.promotion_ledger),
+            actor=args.promotion_actor,
+            role=args.promotion_role,
+            signing_key=_promotion_signing_key(),
+            note=args.promotion_note,
+            fdr_alpha=args.family_fdr_alpha,
+        )
+        print(json.dumps(event, indent=2, sort_keys=True))
+        return 0
+
+    if args.decide_family_promotion:
+        if not args.promotion_decision or not args.promotion_actor or not args.promotion_role:
+            raise SystemExit(
+                "--decide-family-promotion requires --promotion-decision, --promotion-actor, and --promotion-role"
+            )
+        event = decide_family_promotion(
+            ledger_path=Path(args.promotion_ledger),
+            recommendation_id=args.decide_family_promotion,
+            decision=args.promotion_decision,
+            actor=args.promotion_actor,
+            role=args.promotion_role,
+            signing_key=_promotion_signing_key(),
+            note=args.promotion_note,
+        )
+        print(json.dumps(event, indent=2, sort_keys=True))
+        return 0
+
+    if args.list_family_promotions:
+        print(
+            json.dumps(
+                list_family_promotions(
+                    Path(args.list_family_promotions),
+                    signing_key=_promotion_signing_key(),
+                ),
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 0
+
+    if args.verify_promotion_ledger:
+        verification = verify_promotion_ledger(
+            Path(args.verify_promotion_ledger),
+            signing_key=_promotion_signing_key(),
+        )
+        print(
+            json.dumps(
+                promotion_ledger_verification_to_dict(verification),
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 0 if verification.valid else 1
 
     if args.review_ideas:
         if not args.review_queue:
@@ -397,6 +493,15 @@ def main(argv: list[str] | None = None) -> int:
             f"MaxDD={test['max_drawdown']:.2%}, Turnover={test['average_turnover']:.2f}"
         )
     return 0
+
+
+def _promotion_signing_key() -> str:
+    signing_key = os.getenv("AIQRA_PROMOTION_LEDGER_HMAC_KEY", "")
+    if len(signing_key) < 16:
+        raise SystemExit(
+            "family promotion commands require AIQRA_PROMOTION_LEDGER_HMAC_KEY with at least 16 characters"
+        )
+    return signing_key
 
 
 if __name__ == "__main__":

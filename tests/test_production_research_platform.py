@@ -170,6 +170,20 @@ def test_api_roles_scope_read_and_run_access(monkeypatch, tmp_path: Path):
     assert run["experiment"] == "production_slice_signal"
 
 
+def test_api_principal_actor_id_is_collision_resistant_when_masked_ids_match(monkeypatch):
+    monkeypatch.setenv(
+        "AIQRA_API_KEYS",
+        "same1111tail:researcher,same2222tail:operator",
+    )
+    clear_auth_cache()
+
+    researcher = require_role("researcher")(_request(), "same1111tail")
+    operator = require_role("operator")(_request(), "same2222tail")
+
+    assert researcher.api_key_id == operator.api_key_id == "same...tail"
+    assert researcher.actor_id != operator.actor_id
+
+
 def test_api_route_metadata_protects_non_health_routes():
     app = create_app()
 
@@ -185,6 +199,10 @@ def test_api_route_metadata_protects_non_health_routes():
     assert _route_total_dependencies(app, "/reviews/audit") == 1
     assert _route_total_dependencies(app, "/reviews/ideas/status") == 1
     assert _route_total_dependencies(app, "/reviews/approved/run") == 1
+    assert _route_total_dependencies(app, "/promotions") == 1
+    assert _route_total_dependencies(app, "/promotions/recommend") == 1
+    assert _route_total_dependencies(app, "/promotions/decide") == 1
+    assert _route_total_dependencies(app, "/promotions/verify") == 1
 
 
 def test_api_exposes_review_queue_summary_status_and_audit(monkeypatch, tmp_path: Path):
@@ -257,6 +275,78 @@ def test_api_runs_approved_review_queue_configs(monkeypatch, tmp_path: Path):
     assert result["successful_runs"] == 1
     assert [event["event_type"] for event in audit["events"]] == ["created", "status_changed", "ran"]
     assert audit["events"][2]["actor"] == "api:rese...cret"
+
+
+def test_api_enforces_two_person_family_promotion_roles(monkeypatch, tmp_path: Path):
+    try:
+        from quant_research_agent.api import (
+            DecideFamilyPromotionRequest,
+            RecommendFamilyPromotionRequest,
+        )
+    except ImportError:
+        raise AssertionError("family promotion API contract is not implemented")
+
+    monkeypatch.setenv(
+        "AIQRA_API_KEYS",
+        "viewer-secret:viewer,research-secret:researcher,operator-secret:operator",
+    )
+    monkeypatch.setenv(
+        "AIQRA_PROMOTION_LEDGER_HMAC_KEY",
+        "test-promotion-signing-key",
+    )
+    clear_auth_cache()
+    runs_dir = tmp_path / "runs"
+    _write_promotion_manifest(runs_dir / "candidate" / "manifest.json")
+    ledger_path = tmp_path / "promotions" / "promotion_ledger.jsonl"
+    app = create_app()
+    viewer = require_role("viewer")(_request(), "viewer-secret")
+    researcher = require_role("researcher")(_request(), "research-secret")
+    operator = require_role("operator")(_request(), "operator-secret")
+
+    recommendation = _endpoint(app, "/promotions/recommend")(
+        request=RecommendFamilyPromotionRequest(
+            source_path=str(runs_dir),
+            family_id="family-a",
+            run_id="candidate-run",
+            ledger_path=str(ledger_path),
+            note="Recommend through API.",
+            fdr_alpha=0.10,
+        ),
+        principal=researcher,
+    )
+    listed = _endpoint(app, "/promotions")(
+        family_ledger=str(ledger_path),
+        principal=viewer,
+    )
+    decision = _endpoint(app, "/promotions/decide")(
+        request=DecideFamilyPromotionRequest(
+            ledger_path=str(ledger_path),
+            recommendation_id=recommendation["recommendation_id"],
+            decision="approved",
+            note="Approve through API.",
+        ),
+        principal=operator,
+    )
+    verified = _endpoint(app, "/promotions/verify")(
+        family_ledger=str(ledger_path),
+        principal=viewer,
+    )
+    rendered_ledger = ledger_path.read_text(encoding="utf-8")
+    ledger_events = [
+        json.loads(line)
+        for line in rendered_ledger.splitlines()
+    ]
+
+    assert listed["counts"]["pending"] == 1
+    assert decision["status"] == "approved"
+    assert verified["valid"] is True
+    assert ledger_events[0]["actor"].startswith("api:")
+    assert ledger_events[1]["actor"].startswith("api:")
+    assert ledger_events[0]["actor"] != ledger_events[1]["actor"]
+    assert "event_hmac" in ledger_events[0]
+    assert "test-promotion-signing-key" not in rendered_ledger
+    assert "research-secret" not in rendered_ledger
+    assert "operator-secret" not in rendered_ledger
 
 
 def test_api_request_logs_include_sanitized_auth_context(monkeypatch):
@@ -529,3 +619,47 @@ def _manifest(run_id: str, report_path: Path) -> dict[str, object]:
             "verdict": "REVIEW",
         },
     }
+
+
+def _write_promotion_manifest(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "run_id": "candidate-run",
+                "generated_at": "2026-06-18T00:00:00Z",
+                "experiment": "promotion_api_test",
+                "config": {"sha256": "config-a"},
+                "code": {"commit": "deadbeef", "dirty": False},
+                "data": {"source": "synthetic", "snapshot_dataset_id": None},
+                "experiment_family": {
+                    "family_id": "family-a",
+                    "hypothesis_id": "hypothesis-a",
+                    "candidate_id": "candidate-a",
+                    "selection_policy": "pre_registered",
+                },
+                "metrics": {
+                    "holdout": {
+                        "ic_mean": 0.05,
+                        "sharpe": 1.25,
+                        "total_return": 0.10,
+                    },
+                    "research_validity": {
+                        "verdict": "PROMOTE",
+                        "candidates": [
+                            {
+                                "name": "agent_signal",
+                                "holdout_ic_mean": 0.05,
+                                "holdout_sharpe": 1.25,
+                                "holdout_total_return": 0.10,
+                                "p_value": 0.01,
+                                "q_value": 0.01,
+                            }
+                        ],
+                    },
+                },
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )

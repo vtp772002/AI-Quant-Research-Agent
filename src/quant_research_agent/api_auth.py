@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import lru_cache
+from hashlib import sha256
 from typing import Annotated
 
 import os
@@ -23,6 +24,7 @@ ROLE_LEVELS = {
 @dataclass(frozen=True)
 class ApiPrincipal:
     api_key_id: str
+    actor_id: str
     role: str
 
 
@@ -81,7 +83,11 @@ def require_role(required_role: str):
         if role is None:
             _record_auth_audit(request, required_role=required_role, auth_result="invalid_key")
             raise HTTPException(status_code=401, detail="invalid API key")
-        principal = ApiPrincipal(api_key_id=_key_id(x_api_key), role=role)
+        principal = ApiPrincipal(
+            api_key_id=_key_id(x_api_key),
+            actor_id=_actor_id(x_api_key),
+            role=role,
+        )
         if ROLE_LEVELS[role] < ROLE_LEVELS[required_role]:
             _record_auth_audit(
                 request,
@@ -126,6 +132,10 @@ def _key_id(api_key: str) -> str:
     if len(api_key) <= 8:
         return "***"
     return f"{api_key[:4]}...{api_key[-4:]}"
+
+
+def _actor_id(api_key: str) -> str:
+    return sha256(api_key.encode("utf-8")).hexdigest()[:24]
 
 
 def _record_auth_audit(

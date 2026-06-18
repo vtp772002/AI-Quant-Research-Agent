@@ -106,6 +106,8 @@ ledger.
     operations through the role-scoped internal API.
 37. Generate research ideas through an opt-in live OpenAI provider while
     preserving credential guards, transcripts, validation, and review gating.
+38. Require a researcher recommendation and a distinct operator decision before
+    treating `FAMILY_PROMOTE` evidence as an authorized research promotion.
 
 ## Data Contract
 
@@ -212,6 +214,17 @@ US-026 agent-signal p-value from each run, applies Benjamini-Hochberg correction
 across the selected family, and emits `FAMILY_PROMOTE`, `FAMILY_REVIEW`, or
 `FAMILY_REJECT`. Family promotion requires a pre-registered run-level
 `PROMOTE`, comparable provenance, and a family q-value within alpha.
+
+Family-promotion authorization is a separate operational control. A researcher
+recomputes and recommends one `FAMILY_PROMOTE` row. The system freezes the full
+comparison JSON and appends a hash-bound recommendation event. A different
+operator actor may then approve or reject the recommendation. The append-only
+ledger verifier checks evidence hashes, event chaining, actor roles, actor
+separation, duplicate recommendations, and state transitions. Approval means
+the candidate may progress to the next research stage; it is not trading,
+compliance, or investment approval. Every event is authenticated with
+HMAC-SHA256 using `AIQRA_PROMOTION_LEDGER_HMAC_KEY`, and mutations serialize
+the complete ledger read-check-append transaction.
 
 When configured, walk-forward validation divides the backtest results into
 multiple chronological test windows after an initial expanding training period.
@@ -366,6 +379,12 @@ can change idea status or run approved configs. API-originated review mutations
 record sanitized actor ids such as `api:rese...cret`; raw keys are not written
 to audit or request logs.
 
+The internal API also exposes family-promotion list, recommend, decide, and
+verify operations. Viewer keys may list and verify. Researcher keys may
+recommend. Operator keys may decide. API events use sanitized key ids and never
+persist raw API keys. Promotion actor separation uses a stable SHA-256 key
+fingerprint rather than the masked id used in request logs.
+
 Execution simulation converts as-of signal target weights into a broker-free
 order plan with participation gates. It does not route orders, reserve locates,
 send broker instructions, reconcile fills, or implement a kill switch.
@@ -402,5 +421,6 @@ risk status. It does not compute forward returns or claim execution feasibility.
   data, direct securities-lending feeds, direct vendor market data APIs, venue
   routing analysis, independent alpha review, managed holdout storage,
   immutable object storage, credentialed managed registry deployment,
-  multi-user SaaS authorization, provider-specific LLM evals and
-  rate-limit orchestration, or a full production execution simulator.
+  enterprise identity, tenant-scoped SaaS authorization, managed immutable
+  promotion-ledger storage, managed HMAC key rotation, distributed provider
+  quota orchestration, or a full production execution simulator.
