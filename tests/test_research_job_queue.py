@@ -1073,18 +1073,19 @@ def test_research_job_cli_renews_active_lease_without_printing_token(
     )
 
     queue_path = tmp_path / "research_jobs.sqlite"
+    live_now = datetime.now(UTC)
     job = enqueue_research_job(
         queue_path,
         config_paths=[Path("configs/base.yaml")],
         output_dir=tmp_path / "batch",
         idempotency_key="cli-renewal",
-        now=NOW,
+        now=live_now,
     )
     claimed = claim_research_job(
         queue_path,
         worker_id="cli-worker",
         lease_seconds=300,
-        now=NOW,
+        now=live_now,
     )
     assert claimed is not None
     assert claimed.lease_token
